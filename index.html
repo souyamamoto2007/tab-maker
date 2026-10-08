@@ -268,7 +268,10 @@ kbd{font:500 11.5px/1.5 var(--f-fret);border:1px solid var(--line);border-bottom
       <h2>選択中のマス</h2>
       <p class="pos" id="pos"></p>
       <label class="field"><span>セクション名（Aメロ、サビ など）</span><input id="mlabel" type="text" placeholder="なし" autocomplete="off"></label>
-      <label class="field"><span>この小節の拍子</span><select id="mts"></select></label>
+      <div class="two">
+        <label class="field"><span>この小節の拍子</span><select id="mts"></select></label>
+        <label class="field"><span>この小節のマスの細かさ</span><select id="mgrid"></select></label>
+      </div>
       <label class="check" style="margin:-4px 0 10px"><input id="mtsAfter" type="checkbox"> 後ろの小節にもまとめて適用</label>
       <div class="btns">
         <button class="btn" type="button" id="mIns">後ろに挿入</button>
@@ -364,21 +367,30 @@ const sel = { m: 0, s: 0, r: 0 };
 
 /* ---------- model helpers ---------- */
 /* 拍子は全体設定（st.ts）と、小節ごとの上書き（measure.ts、null なら全体と同じ）の2段構え */
+/* マスの細かさ（grid）も同じく、全体設定（st.grid）と小節ごとの上書き（measure.grid）の2段構え */
+const GRID_NAME = { 16: '16分', 8: '8分', 3: '8分3連' };
+const gridOptionsFor = ts => (TS[ts][1] === 4 ? ['16', '8', '3'] : ['16', '8']);
 const tsOf = (ms, st = state) => (ms && ms.ts && TS[ms.ts] ? ms.ts : st.ts);
+const gridOf = (ms, st = state) => (ms && ms.grid && gridOptionsFor(tsOf(ms, st)).includes(ms.grid) ? ms.grid : st.grid);
 const unitOf = (st = state, ts = st.ts) => TS[ts][1];
-function spu(st = state, ts = st.ts) {
+function spu(st = state, ts = st.ts, grid = st.grid) {
   const map = unitOf(st, ts) === 4 ? { 16: 4, 8: 2, 3: 3 } : { 16: 2, 8: 1 };
-  return map[st.grid] || (unitOf(st, ts) === 4 ? 4 : 2);
+  return map[grid] || (unitOf(st, ts) === 4 ? 4 : 2);
 }
-const spm = (st = state, ts = st.ts) => TS[ts][0] * spu(st, ts);
+const spm = (st = state, ts = st.ts, grid = st.grid) => TS[ts][0] * spu(st, ts, grid);
 const mTs = (m, st = state) => tsOf(st.measures[m], st);
-const mSteps = (m, st = state) => spm(st, mTs(m, st));
+const mGrid = (m, st = state) => gridOf(st.measures[m], st);
+const fmtOf = (m, st = state) => ({ ts: mTs(m, st), grid: mGrid(m, st) });
+const mSpu = (m, st = state) => spu(st, mTs(m, st), mGrid(m, st));
+const mSteps = (m, st = state) => spm(st, mTs(m, st), mGrid(m, st));
+// 小節の長さ（16分音符いくつ分）。画面上の小節幅はこれに比例させる
+const tsUnits = ts => TS[ts][0] * 16 / TS[ts][1];
 const nStr = (st = state) => st.tune.length;
 const noteName = midi => NOTE[((midi % 12) + 12) % 12];
 // marks: 線譜の上の記号（'h' / 'p'）、rests: 休符（'r'）、chords: コード名。どれもマスごと
-const emptyMeasure = (st = state, ts = null) => {
-  const len = spm(st, ts || st.ts);
-  return { label: '', ts, cells: Array.from({ length: nStr(st) }, () => Array(len).fill('')),
+const emptyMeasure = (st = state, ts = null, grid = null) => {
+  const len = spm(st, ts || st.ts, grid || st.grid);
+  return { label: '', ts, grid, cells: Array.from({ length: nStr(st) }, () => Array(len).fill('')),
     ties: Array.from({ length: nStr(st) }, () => Array(len).fill('')),
     marks: Array(len).fill(''), rests: Array(len).fill(''), chords: Array(len).fill('') };
 };
@@ -481,9 +493,13 @@ const shapeText = fr => {
   return low.map(f => (f === null ? 'x' : f)).join(low.some(f => f !== null && f > 9) ? '-' : '');
 };
 const tsOverride = m => (state.measures[m] ? state.measures[m].ts || null : null);
-// 位置を「全音符の何分のいくつ」に換算して移す（はみ出した音は捨てる）
-function remapRow(row, fromTs, toTs, fromSt = state, toSt = state) {
-  const os = spu(fromSt, fromTs), ou = unitOf(fromSt, fromTs), ns = spu(toSt, toTs), nu = unitOf(toSt, toTs), len = spm(toSt, toTs);
+const gridOverride = m => (state.measures[m] ? state.measures[m].grid || null : null);
+// 新しい小節は直前の小節の拍子・細かさを引き継ぐ
+const emptyLike = m => emptyMeasure(state, tsOverride(m), gridOverride(m));
+// 位置を「全音符の何分のいくつ」に換算して移す（はみ出した音は捨てる）。from / to は { ts, grid }
+function remapRow(row, from, to) {
+  const os = spu(state, from.ts, from.grid), ou = unitOf(state, from.ts);
+  const ns = spu(state, to.ts, to.grid), nu = unitOf(state, to.ts), len = spm(state, to.ts, to.grid);
   const out = Array(len).fill('');
   row.forEach((v, s) => {
     if (!v) return;
@@ -492,12 +508,12 @@ function remapRow(row, fromTs, toTs, fromSt = state, toSt = state) {
   });
   return out;
 }
-function remapMeasure(ms, fromTs, toTs, fromSt = state, toSt = state) {
-  ms.cells = ms.cells.map(row => remapRow(row, fromTs, toTs, fromSt, toSt));
-  ms.ties = ms.ties.map(row => remapRow(row, fromTs, toTs, fromSt, toSt));
-  ms.marks = remapRow(ms.marks, fromTs, toTs, fromSt, toSt);
-  ms.rests = remapRow(ms.rests, fromTs, toTs, fromSt, toSt);
-  ms.chords = remapRow(ms.chords, fromTs, toTs, fromSt, toSt);
+function remapMeasure(ms, from, to) {
+  ms.cells = ms.cells.map(row => remapRow(row, from, to));
+  ms.ties = ms.ties.map(row => remapRow(row, from, to));
+  ms.marks = remapRow(ms.marks, from, to);
+  ms.rests = remapRow(ms.rests, from, to);
+  ms.chords = remapRow(ms.chords, from, to);
 }
 // コード名は前と変わったところだけ表示する
 function visibleChords() {
@@ -518,26 +534,26 @@ function nextEvent(ms, s, steps) {
   while (n < steps && !isEvent(ms, n)) n++;
   return n;
 }
-function quarters(ts, len) {
-  const u = spu(state, ts), unit = unitOf(state, ts);
+function quarters(f, len) {
+  const u = spu(state, f.ts, f.grid), unit = unitOf(state, f.ts);
   const q = u === 3 && unit === 4 ? (len === 1 ? 0.5 : len === 2 ? 1 : len / 3) : len / u * 4 / unit;
   return REST_SIZES.find(x => x <= q + 1e-9) || 0.25;
 }
 function restLength(m, s) {
   const ms = state.measures[m], steps = mSteps(m), next = nextEvent(ms, s, steps);
   if (s === 0 && next === steps) return 'whole';
-  return quarters(mTs(m), next - s);
+  return quarters(fmtOf(m), next - s);
 }
 
 // 線譜の下のリズム：符尾、連桁（同じ拍グループ内でつなぐ）、付点、単独の8分・16分は旗
 function rhythmHtml(m) {
-  const ms = state.measures[m], steps = mSteps(m), ts = mTs(m), u = spu(state, ts), unit = unitOf(state, ts), beats = TS[ts][0];
+  const ms = state.measures[m], steps = mSteps(m), f = fmtOf(m), ts = f.ts, u = mSpu(m), unit = unitOf(state, ts), beats = TS[ts][0];
   const triplet = u === 3 && unit === 4;
   const group = triplet ? u : unit === 4 ? (beats % 2 === 0 ? 2 * u : u) : (beats % 3 === 0 ? 3 * u : 2 * u);
   const ev = [];
   for (let s = 0; s < steps; s++) {
     if (!isEvent(ms, s)) continue;
-    const q = quarters(ts, nextEvent(ms, s, steps) - s);
+    const q = quarters(f, nextEvent(ms, s, steps) - s);
     const rest = !ms.cells.some(row => isNote(row[s]));
     ev.push({ s, q, rest, beams: rest ? 0 : q < 0.5 ? 2 : q < 1 ? 1 : 0, dot: [3, 1.5, 0.75].includes(q), g: Math.floor(s / group) });
   }
@@ -624,20 +640,21 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const clone = o => JSON.parse(JSON.stringify(o));
 
 function gridOptions(st = state) {
-  return unitOf(st) === 4 ? [['16', '16分'], ['8', '8分'], ['3', '8分3連']] : [['16', '16分'], ['8', '8分']];
+  return gridOptionsFor(st.ts).map(g => [g, GRID_NAME[g]]);
 }
-function moveOptions(st = state) {
-  const u = spu(st);
-  if (unitOf(st) === 4) {
-    if (u === 4) return [['1', '1マス（16分）'], ['2', '8分'], ['4', '4分']];
-    if (u === 2) return [['1', '1マス（8分）'], ['2', '4分']];
-    return [['1', '1マス（3連）'], ['3', '4分']];
-  }
-  return u === 2 ? [['1', '1マス（16分）'], ['2', '8分'], ['6', '付点4分']] : [['1', '1マス（8分）'], ['3', '付点4分']];
+// スペースで進む幅は音価（4分=1）で持ち、その小節のマス数に直して使う（小節ごとに細かさが違ってもよい）
+function moveOptions() {
+  return [['cell', '1マス'], ['0.5', '8分'], ['1', '4分'], ['1.5', '付点4分']];
+}
+function moveCells(m = sel.m) {
+  const v = $('#move').value;
+  if (v === 'cell') return 1;
+  const u = mSpu(m), unit = unitOf(state, mTs(m));
+  return Math.max(1, Math.round(Number(v) * u * unit / 4));
 }
 function stepDur(m) {
   const ts = mTs(m), beat = unitOf(state, ts) === 4 ? 60 / state.tempo : 30 / state.tempo;
-  return beat / spu(state, ts);
+  return beat / mSpu(m);
 }
 
 function sample() {
@@ -681,10 +698,12 @@ function normalize(st) {
   if (!gridOptions(out).some(o => o[0] === out.grid)) out.grid = '16';
   const n = nStr(out);
   out.measures = st.measures.map(ms => {
-    const ts = ms && TS[ms.ts] ? ms.ts : null, steps = spm(out, ts || out.ts);
+    const ts = ms && TS[ms.ts] ? ms.ts : null;
+    const grid = ms && gridOptionsFor(ts || out.ts).includes(String(ms.grid)) ? String(ms.grid) : null;
+    const steps = spm(out, ts || out.ts, grid || out.grid);
     const row = (arr, ok) => Array.from({ length: steps }, (_, s) => (ok(arr?.[s]) ? arr[s] : ''));
     const res = {
-      label: String(ms?.label ?? ''), ts,
+      label: String(ms?.label ?? ''), ts, grid,
       cells: Array.from({ length: n }, (_, r) => Array.from({ length: steps }, (_, s) => String(ms?.cells?.[r]?.[s] ?? '').slice(0, 3))),
       ties: Array.from({ length: n }, (_, r) => row(ms?.ties?.[r], v => v === 't')),
       marks: row(ms?.marks, v => v === 'h' || v === 'p'),
@@ -724,8 +743,8 @@ function render() {
   const M = state.measures;
   const clef = '<div class="clef">' + state.tune.map((t, r) => `<span class="tn" style="grid-row:${r + 1}">${noteName(t)}</span>`).join('')
     + '<span class="tab"><i>T</i><i>A</i><i>B</i></span></div>';
-  const ticksFor = ts => {
-    const u = spu(state, ts), steps = spm(state, ts), beats = TS[ts][0];
+  const ticksFor = f => {
+    const ts = f.ts, u = spu(state, ts, f.grid), steps = spm(state, ts, f.grid), beats = TS[ts][0];
     const strongEvery = unitOf(state, ts) === 8 && beats % 3 === 0 ? 3 * u : steps;
     let h = '<div class="ticks">';
     for (let s = 0; s < steps; s += u) h += `<i style="grid-column:${s + 1}"${s % strongEvery === 0 ? ' class="strong"' : ''}></i>`;
@@ -735,15 +754,15 @@ function render() {
   const vis = visibleChords();
   let html = '';
   for (let i = 0; i < M.length; i += per) {
-    // 小節の幅はマス数に比例。最後の段が短いときは空きトラックで埋める
+    // 小節の幅は長さ（拍数）に比例。最後の段が短いときは空きトラックで埋める
     const idx = [];
     for (let m = i; m < Math.min(i + per, M.length); m++) idx.push(m);
-    let cols = '10mm ' + idx.map(m => `minmax(0,${mSteps(m)}fr)`).join(' ');
-    if (idx.length < per) cols += ` minmax(0,${(per - idx.length) * spm()}fr)`;
+    let cols = '10mm ' + idx.map(m => `minmax(0,${tsUnits(mTs(m))}fr)`).join(' ');
+    if (idx.length < per) cols += ` minmax(0,${(per - idx.length) * tsUnits(state.ts)}fr)`;
     const hasChords = idx.some(m => vis[m].some(Boolean));
     html += `<div class="system${hasChords ? ' has-chords' : ''}" style="--cols:${cols}">` + clef;
     for (const m of idx) {
-      const ms = M[m], ts = mTs(m), steps = mSteps(m), u = spu(state, ts);
+      const ms = M[m], ts = mTs(m), steps = mSteps(m), u = mSpu(m);
       const eol = m === i + per - 1 || m === M.length - 1, fin = m === M.length - 1;
       // 拍子記号は曲の頭と、拍子が変わる小節の頭に線譜の中へ描く
       const showTs = m === 0 || ts !== mTs(m - 1);
@@ -771,7 +790,7 @@ function render() {
           html += `<div class="${cls}" data-m="${m}" data-r="${r}" data-s="${s}">${inner}</div>`;
         }
       }
-      html += tiesHtml(m) + (state.rhythm === 'stems' ? rhythmHtml(m) : ticksFor(ts)) + '</div>';
+      html += tiesHtml(m) + (state.rhythm === 'stems' ? rhythmHtml(m) : ticksFor(fmtOf(m))) + '</div>';
     }
     html += '</div>';
   }
@@ -784,9 +803,9 @@ function render() {
 function cellEl(m, r, s) { return document.querySelector(`.c[data-m="${m}"][data-r="${r}"][data-s="${s}"]`); }
 
 function updateRail() {
-  const ts = mTs(sel.m), u = spu(state, ts), beat = Math.floor(sel.s / u) + 1, off = sel.s % u;
+  const ts = mTs(sel.m), u = mSpu(sel.m), beat = Math.floor(sel.s / u) + 1, off = sel.s % u;
   const unitName = unitOf(state, ts) === 8 ? '8分' : '';
-  $('#pos').innerHTML = `${sel.m + 1}小節目（${ts}）・${esc(noteName(state.tune[sel.r]))}弦<small>${unitName}${beat}拍目${off ? `（+${off}/${u}）` : '（頭）'}・全${state.measures.length}小節</small>`;
+  $('#pos').innerHTML = `${sel.m + 1}小節目（${ts}・${GRID_NAME[mGrid(sel.m)]}）・${esc(noteName(state.tune[sel.r]))}弦<small>${unitName}${beat}拍目${off ? `（+${off}/${u}）` : '（頭）'}・全${state.measures.length}小節</small>`;
   if (hasRange()) {
     const b = rangeBounds();
     $('#pos').innerHTML += `<small>範囲選択中：${b.g1 - b.g0 + 1}マス × ${b.r1 - b.r0 + 1}弦（⌘C でコピー・Esc で解除）</small>`;
@@ -796,6 +815,10 @@ function updateRail() {
   const mts = $('#mts');
   mts.innerHTML = `<option value="">全体と同じ（${state.ts}）</option>` + Object.keys(TS).map(k => `<option value="${k}">${k}</option>`).join('');
   mts.value = tsOverride(sel.m) || '';
+  const mg = $('#mgrid');
+  mg.innerHTML = `<option value="">全体と同じ（${GRID_NAME[state.grid]}）</option>`
+    + gridOptionsFor(ts).map(g => `<option value="${g}">${GRID_NAME[g]}</option>`).join('');
+  mg.value = gridOverride(sel.m) && gridOptionsFor(ts).includes(gridOverride(sel.m)) ? gridOverride(sel.m) : '';
 }
 
 /* ---------- 範囲選択 ----------
@@ -873,7 +896,7 @@ function pasteRange() {
     const start = off[sel.m] + sel.s;
     // 足りなければ小節を足す（最後の小節と同じ拍子）
     while (off[off.length - 1] < start + len) {
-      state.measures.push(emptyMeasure(state, tsOverride(state.measures.length - 1)));
+      state.measures.push(emptyLike(state.measures.length - 1));
       off = offsets();
     }
     clip.steps.forEach((st, i) => {
@@ -928,7 +951,7 @@ function moveRange(dg, dr, copy = false, keepPitch = false) {
     }
     let off = offsets();
     while (off[off.length - 1] <= b.g1 + dg) {
-      state.measures.push(emptyMeasure(state, tsOverride(state.measures.length - 1)));
+      state.measures.push(emptyLike(state.measures.length - 1));
       off = offsets();
     }
     data.forEach((st, i) => {
@@ -948,7 +971,7 @@ function moveRange(dg, dr, copy = false, keepPitch = false) {
   updateSel();
 }
 function doCopy() { if (hasRange()) copyRange(); else copyMeasure(); }
-function doCut() { if (hasRange()) cutRange(); else { copyMeasure(); mutate(() => { state.measures[sel.m] = emptyMeasure(state, tsOverride(sel.m)); }); } }
+function doCut() { if (hasRange()) cutRange(); else { copyMeasure(); mutate(() => { state.measures[sel.m] = emptyLike(sel.m); }); } }
 function doPaste() {
   if (!clip) return toast('先にコピーしてください');
   if (clip.kind === 'range') pasteRange(); else pasteMeasure();
@@ -1093,7 +1116,7 @@ function applyChord(i = chordUI.idx) {
   });
   lastChord = $('#chordIn').value.trim();
   closeChord();
-  move(Number($('#move').value) || 1, true);
+  move(moveCells(), true);
 }
 $('#chordIn').addEventListener('input', updateCands);
 $('#cands').addEventListener('click', e => { const b = e.target.closest('.cand'); if (b) applyChord(+b.dataset.i); });
@@ -1121,7 +1144,7 @@ function move(k, extend = false) {
   while (s >= mSteps(m)) {
     if (m === state.measures.length - 1) {
       if (!extend) { s = mSteps(m) - 1; break; }
-      mutate(() => state.measures.push(emptyMeasure(state, tsOverride(m))));
+      mutate(() => state.measures.push(emptyLike(m)));
     }
     s -= mSteps(m); m++;
   }
@@ -1134,7 +1157,7 @@ function move(k, extend = false) {
 }
 function jumpMeasure(d) {
   let m = sel.m + d;
-  if (m >= state.measures.length) mutate(() => state.measures.push(emptyMeasure(state, tsOverride(state.measures.length - 1))));
+  if (m >= state.measures.length) mutate(() => state.measures.push(emptyLike(state.measures.length - 1)));
   sel.m = Math.max(0, Math.min(m, state.measures.length - 1)); sel.s = 0;
   updateSel();
 }
@@ -1173,7 +1196,7 @@ function act(k, shift = false) {
     case 'ArrowRight': move(1); return true;
     case 'ArrowUp': sel.r = Math.max(0, sel.r - 1); updateSel(); return true;
     case 'ArrowDown': sel.r = Math.min(nStr() - 1, sel.r + 1); updateSel(); return true;
-    case ' ': { const st = Number($('#move').value) || 1; move(shift ? -st : st, !shift); return true; }
+    case ' ': { const st = moveCells(); move(shift ? -st : st, !shift); return true; }
     case 'Tab': jumpMeasure(shift ? -1 : 1); return true;
     case 'Home': sel.s = 0; updateSel(); return true;
     case 'End': sel.s = mSteps(sel.m) - 1; updateSel(); return true;
@@ -1204,7 +1227,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.altKey) {
-    const step = e.shiftKey ? Number($('#move').value) || 1 : 1;
+    const step = e.shiftKey ? moveCells() : 1;
     const mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     // ⌥↑↓ はフレットそのまま、⌥⇧↑↓ は同じ音のまま
     if (mv) { e.preventDefault(); moveRange(mv[0], mv[1], false, e.shiftKey && mv[1] !== 0); }
@@ -1289,21 +1312,21 @@ document.addEventListener('click', e => { const b = e.target.closest('button'); 
 /* ---------- measure operations ---------- */
 function copyMeasure() {
   const ms = state.measures[sel.m];
-  clip = { kind: 'measure', cells: clone(ms.cells), ties: clone(ms.ties), marks: ms.marks.slice(), rests: ms.rests.slice(), chords: ms.chords.slice(), ts: mTs(sel.m), st: { grid: state.grid, ts: state.ts } };
+  clip = { kind: 'measure', cells: clone(ms.cells), ties: clone(ms.ties), marks: ms.marks.slice(), rests: ms.rests.slice(), chords: ms.chords.slice(), fmt: fmtOf(sel.m) };
   toast(`${sel.m + 1}小節目をコピーしました`);
 }
 function pasteMeasure() {
   if (!clip) return toast('先に小節をコピーしてください');
   if (clip.kind === 'range') return pasteRange();
   mutate(() => {
-    const n = nStr(), ts = mTs(sel.m), ms = state.measures[sel.m];
+    const n = nStr(), to = fmtOf(sel.m), ms = state.measures[sel.m];
     ms.cells = Array.from({ length: n }, (_, r) =>
-      clip.cells[r] ? remapRow(clip.cells[r], clip.ts, ts, clip.st) : Array(mSteps(sel.m)).fill(''));
-    ms.marks = remapRow(clip.marks, clip.ts, ts, clip.st);
-    ms.rests = remapRow(clip.rests, clip.ts, ts, clip.st);
-    ms.chords = remapRow(clip.chords, clip.ts, ts, clip.st);
+      clip.cells[r] ? remapRow(clip.cells[r], clip.fmt, to) : Array(mSteps(sel.m)).fill(''));
+    ms.marks = remapRow(clip.marks, clip.fmt, to);
+    ms.rests = remapRow(clip.rests, clip.fmt, to);
+    ms.chords = remapRow(clip.chords, clip.fmt, to);
     ms.ties = Array.from({ length: n }, (_, r) =>
-      clip.ties[r] ? remapRow(clip.ties[r], clip.ts, ts, clip.st) : Array(mSteps(sel.m)).fill(''));
+      clip.ties[r] ? remapRow(clip.ties[r], clip.fmt, to) : Array(mSteps(sel.m)).fill(''));
   });
   toast(`${sel.m + 1}小節目に貼り付けました`);
 }
@@ -1311,15 +1334,33 @@ function setMeasureTs(ts, andAfter) {
   const end = andAfter ? state.measures.length : sel.m + 1;
   mutate(() => {
     for (let m = sel.m; m < end; m++) {
-      const ms = state.measures[m], from = mTs(m);
+      const ms = state.measures[m], from = fmtOf(m);
       ms.ts = ts || null;
-      const to = mTs(m);
-      if (from !== to) remapMeasure(ms, from, to);
+      if (ms.grid && !gridOptionsFor(mTs(m)).includes(ms.grid)) ms.grid = null;  // 6/8 に3連は無いので全体設定へ
+      const to = fmtOf(m);
+      if (from.ts !== to.ts || from.grid !== to.grid) remapMeasure(ms, from, to);
     }
   });
   toast(`${sel.m + 1}小節目${andAfter ? '以降' : ''}を ${mTs(sel.m)} にしました`);
 }
 $('#mts').onchange = e => setMeasureTs(e.target.value, $('#mtsAfter').checked);
+function setMeasureGrid(grid, andAfter) {
+  const end = andAfter ? state.measures.length : sel.m + 1;
+  let skipped = 0;
+  mutate(() => {
+    for (let m = sel.m; m < end; m++) {
+      const ms = state.measures[m], from = fmtOf(m);
+      if (grid && !gridOptionsFor(mTs(m)).includes(grid)) { skipped++; continue; }
+      ms.grid = grid || null;
+      const to = fmtOf(m);
+      if (from.grid !== to.grid) remapMeasure(ms, from, to);
+    }
+  });
+  sel.s = Math.min(sel.s, mSteps(sel.m) - 1);
+  updateSel(false);
+  toast(`${sel.m + 1}小節目${andAfter ? '以降' : ''}のマスを ${GRID_NAME[mGrid(sel.m)]} にしました${skipped ? `（8分の拍子の${skipped}小節はそのまま）` : ''}`);
+}
+$('#mgrid').onchange = e => setMeasureGrid(e.target.value, $('#mtsAfter').checked);
 function dupMeasure() {
   mutate(() => { const c = clone(state.measures[sel.m]); c.label = ''; state.measures.splice(sel.m + 1, 0, c); sel.m++; });
   updateSel(); toast('小節を複製しました');
@@ -1327,11 +1368,11 @@ function dupMeasure() {
 $('#mCopy').onclick = copyMeasure;
 $('#mPaste').onclick = pasteMeasure;
 $('#mDup').onclick = dupMeasure;
-$('#mIns').onclick = () => { mutate(() => { state.measures.splice(sel.m + 1, 0, emptyMeasure(state, tsOverride(sel.m))); sel.m++; sel.s = 0; }); updateSel(); };
-$('#mClear').onclick = () => mutate(() => { state.measures[sel.m] = emptyMeasure(state, tsOverride(sel.m)); });
+$('#mIns').onclick = () => { mutate(() => { state.measures.splice(sel.m + 1, 0, emptyLike(sel.m)); sel.m++; sel.s = 0; }); updateSel(); };
+$('#mClear').onclick = () => mutate(() => { state.measures[sel.m] = emptyLike(sel.m); });
 $('#mDel').onclick = () => {
   mutate(() => {
-    if (state.measures.length === 1) state.measures[0] = emptyMeasure(state, tsOverride(0));
+    if (state.measures.length === 1) state.measures[0] = emptyLike(0);
     else state.measures.splice(sel.m, 1);
   });
   updateSel(false); toast('小節を削除しました（⌘Zで戻せます）');
@@ -1339,8 +1380,7 @@ $('#mDel').onclick = () => {
 document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
   const k = +b.dataset.add;
   mutate(() => {
-    const ts = tsOverride(state.measures.length - 1);
-    for (let i = 0; i < k; i++) state.measures.push(emptyMeasure(state, ts));
+    for (let i = 0; i < k; i++) state.measures.push(emptyLike(state.measures.length - 1));
   });
 });
 
@@ -1362,11 +1402,12 @@ $('#preset').onchange = e => {
 function changeTiming(fn) {
   const before = { grid: state.grid, ts: state.ts };
   mutate(() => {
+    const froms = state.measures.map(ms => ({ ts: tsOf(ms, before), grid: gridOf(ms, before) }));
     fn();
     if (!gridOptions().some(o => o[0] === state.grid)) state.grid = '16';
-    state.measures.forEach(ms => {
-      const from = tsOf(ms, before), to = tsOf(ms);
-      remapMeasure(ms, from, to, before, state);
+    state.measures.forEach((ms, m) => {
+      if (ms.grid && !gridOptionsFor(mTs(m)).includes(ms.grid)) ms.grid = null;
+      remapMeasure(ms, froms[m], fmtOf(m));
     });
   });
   syncControls();
