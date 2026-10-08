@@ -56,6 +56,20 @@ button,select,input{font:inherit;color:inherit}
 .btn.danger{color:var(--danger)}
 .btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .saved{font-size:12px;color:var(--muted)}
+.songwrap{position:relative}
+.songs{position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:min(420px,calc(100vw - 32px));max-height:70vh;overflow:auto;
+  background:var(--rail);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:12px;display:grid;gap:10px}
+.songs-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.song-list{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.song{display:flex;align-items:center;gap:8px;border-radius:6px;padding:4px 4px 4px 0}
+.song.now{background:var(--btn);box-shadow:inset 3px 0 0 var(--accent)}
+.song-open{appearance:none;flex:1;min-width:0;display:grid;gap:1px;text-align:left;border:0;background:transparent;cursor:pointer;padding:4px 8px;border-radius:6px}
+.song-open:hover{background:var(--btn)}
+.song-title{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.song-date{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.song-acts{display:flex;gap:4px;flex-shrink:0}
+.song-acts .btn{padding:4px 8px;font-size:12px}
+.songs-note{margin:0;font-size:12px;color:var(--muted)}
 
 /* ---------- layout ---------- */
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;align-items:start}
@@ -209,7 +223,18 @@ kbd{font:500 11.5px/1.5 var(--f-fret);border:1px solid var(--line);border-bottom
 <header class="bar chrome">
   <div class="brand"><b>TABメーカー</b><small id="saved" class="saved">自動保存されます</small></div>
   <div class="actions">
-    <button class="btn" id="bNew" type="button">新規</button>
+    <div class="songwrap">
+      <button class="btn" id="bSongs" type="button" aria-expanded="false" aria-controls="songs">曲リスト</button>
+      <div class="songs" id="songs" hidden>
+        <div class="songs-head">
+          <b>曲リスト</b>
+          <button class="btn primary" id="songNew" type="button">＋ 新しい曲</button>
+        </div>
+        <ul class="song-list" id="songList"></ul>
+        <p class="songs-note">曲はこのブラウザの中だけに保存されます。ほかの人や別の端末には届きません。持ち出すときは「ファイルに書き出し」を使ってください。</p>
+      </div>
+    </div>
+    <button class="btn" id="bNew" type="button">＋ 新しい曲</button>
     <button class="btn" id="bOpen" type="button">ファイルを開く</button>
     <button class="btn" id="bExport" type="button">ファイルに書き出し</button>
     <button class="btn" id="bText" type="button">テキストでコピー</button>
@@ -724,14 +749,44 @@ function normalize(st) {
 }
 
 /* ---------- persistence ---------- */
-let saveTimer = null;
+/* 曲リスト：このブラウザの中だけに保存（ほかの人には届かない）
+   IDX = [{id, title, updated}]、曲の中身は SONG + id、最後に開いた曲は CUR */
+const IDX = 'tabmaker.songs.v1', SONG = 'tabmaker.song.', CUR = 'tabmaker.current';
+let songs = [], currentId = null;
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch { return false; } };
+const lsDel = k => { try { localStorage.removeItem(k); } catch {} };
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const songTitle = t => (t && t.trim()) || '無題';
+function saveIndex() { lsSet(IDX, JSON.stringify(songs)); }
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); $('#saved').textContent = '自動保存済み'; }
-  catch { $('#saved').textContent = '自動保存できません（ファイルに書き出してください）'; }
-  clearTimeout(saveTimer);
+  if (!currentId) return;
+  const ok = lsSet(SONG + currentId, JSON.stringify(state));
+  const entry = songs.find(s => s.id === currentId);
+  if (entry) { entry.title = state.title; entry.updated = Date.now(); }
+  saveIndex();
+  lsSet(CUR, currentId);
+  $('#saved').textContent = ok ? '自動保存済み（このブラウザ）' : '自動保存できません（ファイルに書き出してください）';
+  updateSongButton();
 }
-function load() {
-  try { const raw = localStorage.getItem(KEY); return raw ? normalize(JSON.parse(raw)) : null; } catch { return null; }
+function readSong(id) {
+  try { const raw = lsGet(SONG + id); return raw ? normalize(JSON.parse(raw)) : null; } catch { return null; }
+}
+// 起動時：曲リストを読む。無ければ旧形式（1曲だけの保存）を1曲目として取り込む。どちらも無ければサンプル
+function loadSongs() {
+  try { songs = JSON.parse(lsGet(IDX) || '[]').filter(s => s && s.id); } catch { songs = []; }
+  if (!songs.length) {
+    let st = null;
+    try { const raw = lsGet(KEY); st = raw ? normalize(JSON.parse(raw)) : null; } catch {}
+    st = st || sample();
+    const id = newId();
+    songs.push({ id, title: st.title, updated: Date.now() });
+    lsSet(SONG + id, JSON.stringify(st));
+    saveIndex();
+  }
+  const cur = lsGet(CUR);
+  currentId = songs.some(s => s.id === cur) ? cur : songs.slice().sort((a, b) => b.updated - a.updated)[0].id;
+  return readSong(currentId) || sample();
 }
 
 /* ---------- rendering ---------- */
@@ -1209,6 +1264,7 @@ function act(k, shift = false) {
 
 document.addEventListener('keydown', e => {
   const t = e.target;
+  if (e.key === 'Escape' && !$('#songs').hidden) { e.preventDefault(); closeSongs(); return; }
   if (t.id === 'chordIn') return chordKey(e);
   if (t.closest && t.closest('input, select, textarea, button')) {
     if (t.matches('input, select') && (e.key === 'Escape' || (e.key === 'Enter' && !e.isComposing && t.type !== 'checkbox'))) { e.preventDefault(); t.blur(); }
@@ -1429,26 +1485,109 @@ $('#sub').oninput = e => { state.sub = e.target.value; save(); };
 $('#mlabel').oninput = e => { state.measures[sel.m].label = e.target.value.slice(0, 20); save(); render(); };
 
 /* ---------- files ---------- */
-// 確認はページの中で：1回目で「もう一度押すと消えます」に変わり、3秒以内の2回目で実行
-let newArmed = null;
-$('#bNew').onclick = () => {
-  const b = $('#bNew');
-  if (!newArmed) {
-    b.textContent = 'もう一度押すと白紙に';
-    b.classList.add('danger');
-    newArmed = setTimeout(() => { newArmed = null; b.textContent = '新規'; b.classList.remove('danger'); }, 3000);
+/* ---------- 曲リストの操作 ---------- */
+function showSong(st) {
+  state = st;
+  undo = []; redo = [];
+  sel.m = sel.s = sel.r = 0; anchor = null;
+  stopPlay();
+  syncControls(); render(); updateSel(false);
+  save();
+}
+function openSong(id) {
+  if (id === currentId) return closeSongs();
+  save();
+  const st = readSong(id);
+  if (!st) return toast('この曲を読み込めませんでした');
+  currentId = id;
+  showSong(st);
+  closeSongs();
+  toast(`「${songTitle(st.title)}」を開きました`);
+}
+function addSong(st, message) {
+  save();
+  const id = newId();
+  songs.push({ id, title: st.title, updated: Date.now() });
+  currentId = id;
+  showSong(st);
+  closeSongs();
+  toast(message);
+}
+function newSong() {
+  // 楽器・拍子などの設定は今の曲から引き継ぐ
+  const keep = { preset: state.preset, tune: state.tune.slice(), tempo: state.tempo, ts: state.ts, grid: state.grid, perLine: state.perLine,
+    rhythm: state.rhythm, capo: state.capo, chordMode: state.chordMode, hpStyle: state.hpStyle };
+  const st = Object.assign({ title: '', sub: '', measures: [] }, keep);
+  for (let i = 0; i < 8; i++) st.measures.push(emptyMeasure(st));
+  addSong(st, '新しい曲を作りました');
+  $('#title').focus();
+}
+function dupSong(id) {
+  save();
+  const st = readSong(id);
+  if (!st) return;
+  st.title = songTitle(st.title) + '（コピー）';
+  addSong(st, '曲を複製しました');
+}
+let delArmed = null;
+function deleteSong(id, btn) {
+  // 確認はページの中で：1回目で「本当に削除」に変わり、3秒以内の2回目で実行
+  if (delArmed !== id) {
+    delArmed = id;
+    btn.textContent = '本当に削除';
+    setTimeout(() => { if (delArmed === id) { delArmed = null; drawSongs(); } }, 3000);
     return;
   }
-  clearTimeout(newArmed); newArmed = null; b.textContent = '新規'; b.classList.remove('danger');
-  mutate(() => {
-    const keep = { preset: state.preset, tune: state.tune, tempo: state.tempo, ts: state.ts, grid: state.grid, perLine: state.perLine,
-      rhythm: state.rhythm, capo: state.capo, chordMode: state.chordMode, hpStyle: state.hpStyle };
-    state = Object.assign({ title: '', sub: '', measures: [] }, keep);
-    for (let i = 0; i < 8; i++) state.measures.push(emptyMeasure());
-  });
-  sel.m = sel.s = sel.r = 0; syncControls(); updateSel(false);
-  toast('白紙にしました（⌘Zで戻せます）');
+  delArmed = null;
+  const title = songTitle((songs.find(s => s.id === id) || {}).title);
+  songs = songs.filter(s => s.id !== id);
+  lsDel(SONG + id);
+  saveIndex();
+  if (id === currentId) {
+    if (songs.length) {
+      const next = songs.slice().sort((a, b) => b.updated - a.updated)[0];
+      currentId = next.id;
+      showSong(readSong(next.id) || sample());
+    } else {
+      currentId = null;
+      newSong();
+    }
+  }
+  drawSongs();
+  toast(`「${title}」を削除しました`);
+}
+const fmtDate = t => {
+  const d = new Date(t), p = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
+function drawSongs() {
+  const list = songs.slice().sort((a, b) => b.updated - a.updated);
+  $('#songList').innerHTML = list.map(s => `
+    <li class="song${s.id === currentId ? ' now' : ''}">
+      <button type="button" class="song-open" data-open="${s.id}">
+        <span class="song-title">${esc(songTitle(s.title))}</span>
+        <span class="song-date">${s.id === currentId ? '編集中・' : ''}${fmtDate(s.updated)}</span>
+      </button>
+      <span class="song-acts">
+        <button type="button" class="btn" data-dup="${s.id}">複製</button>
+        <button type="button" class="btn danger" data-del="${s.id}">削除</button>
+      </span>
+    </li>`).join('');
+}
+function updateSongButton() { $('#bSongs').textContent = `曲リスト（${songs.length}）`; }
+function openSongs() { drawSongs(); $('#songs').hidden = false; $('#bSongs').setAttribute('aria-expanded', 'true'); }
+function closeSongs() { $('#songs').hidden = true; $('#bSongs').setAttribute('aria-expanded', 'false'); }
+$('#bSongs').onclick = e => { e.stopPropagation(); $('#songs').hidden ? openSongs() : closeSongs(); };
+$('#bNew').onclick = newSong;
+$('#songNew').onclick = newSong;
+$('#songs').addEventListener('click', e => {
+  e.stopPropagation();
+  const o = e.target.closest('[data-open]'), d = e.target.closest('[data-dup]'), x = e.target.closest('[data-del]');
+  if (o) openSong(o.dataset.open);
+  else if (d) dupSong(d.dataset.dup);
+  else if (x) deleteSong(x.dataset.del, x);
+});
+document.addEventListener('click', e => { if (!$('#songs').hidden && !e.target.closest('#songs, #bSongs')) closeSongs(); });
 
 /* ファイルの保存：claude.ai の共有ページでは downloads 機能、手元のHTMLでは普通のダウンロード */
 const inViewer = !!(window.claude && typeof window.claude.use === 'function');
@@ -1482,9 +1621,8 @@ $('#file').onchange = e => {
   rd.onload = () => {
     try {
       const st = normalize(JSON.parse(rd.result));
-      mutate(() => { state = st; });
-      sel.m = sel.s = sel.r = 0; syncControls(); updateSel(false);
-      toast(`「${f.name}」を開きました`);
+      if (!st.title) st.title = f.name.replace(/\.tab\.json$|\.json$/i, '');
+      addSong(st, `「${f.name}」を新しい曲として曲リストに追加しました`);
     } catch (err) { toast('開けませんでした：TABメーカーで書き出した .json を選んでください'); }
     e.target.value = '';
   };
@@ -1727,7 +1865,8 @@ if (inViewer) {
     }
   }, () => {});
 }
-state = load() || sample();
+state = loadSongs();
+updateSongButton();
 syncControls();
 render();
 updateSel(false);
