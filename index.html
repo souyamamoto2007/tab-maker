@@ -1,0 +1,1696 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TABメーカー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=Shippori+Mincho+B1:wght@700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: 机の上にA4の紙を1枚置き、右に設定レール、紙の下に入力パッドを固定 */
+:root{
+  --desk:#e3e6e0; --rail:#f6f7f4; --line:#c8ccc3; --text:#1c201e; --muted:#5d645f;
+  --btn:#ffffff; --accent:#2f56b0; --on-accent:#ffffff; --danger:#a8261d;
+  --shadow:0 1px 2px rgba(20,30,25,.10),0 10px 32px rgba(20,30,25,.10);
+  /* 紙はどちらのテーマでも白（印刷物そのものなので固定） */
+  --paper:#ffffff; --ink:#161616; --ink-soft:#9b9b9b; --paper-tint:#f2f5fc;
+  --paper-sel:#2f56b0; --paper-sel-soft:#dbe4f8; --paper-hover:#f1f1f1; --paper-range:#c9d8f6;
+  --paper-play:#ffe4a0; --paper-guide:#e4e4e4;
+  --f-display:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  --f-ui:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --f-fret:"IBM Plex Sans Condensed","Arial Narrow","Helvetica Neue",sans-serif;
+  --gap:3.3mm;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --desk:#151817; --rail:#1e2220; --line:#363c39; --text:#e5e9e6; --muted:#9aa39e;
+    --btn:#272c2a; --accent:#8faaf0; --on-accent:#0f1730; --danger:#ff8f86;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 32px rgba(0,0,0,.45);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --desk:#151817; --rail:#1e2220; --line:#363c39; --text:#e5e9e6; --muted:#9aa39e;
+  --btn:#272c2a; --accent:#8faaf0; --on-accent:#0f1730; --danger:#ff8f86;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 32px rgba(0,0,0,.45);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--desk);color:var(--text);font:14px/1.6 var(--f-ui)}
+button,select,input{font:inherit;color:inherit}
+
+/* ---------- top bar ---------- */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:10px 16px;background:var(--rail);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:12px;margin-right:auto;min-width:0}
+.brand b{font-family:var(--f-display);font-size:21px;letter-spacing:.03em}
+.brand small{color:var(--muted);font-size:12px}
+.actions{display:flex;flex-wrap:wrap;gap:6px}
+.btn{appearance:none;border:1px solid var(--line);background:var(--btn);border-radius:6px;padding:6px 12px;cursor:pointer;line-height:1.3;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+.btn.danger{color:var(--danger)}
+.btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.saved{font-size:12px;color:var(--muted)}
+
+/* ---------- layout ---------- */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;align-items:start}
+.desk{min-width:0;padding:24px 16px 0}
+.sheet-scroll{overflow-x:auto;padding-bottom:24px}
+.rail{position:sticky;top:0;max-height:100vh;overflow:auto;padding:20px 16px 40px;display:grid;gap:22px;background:var(--rail);border-left:1px solid var(--line)}
+@media (max-width:1100px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .rail{position:static;max-height:none;border-left:0;border-top:1px solid var(--line);grid-template-columns:repeat(auto-fit,minmax(240px,1fr));align-items:start}
+}
+
+/* ---------- the A4 sheet ---------- */
+.page{width:210mm;min-height:297mm;margin:0 auto;padding:14mm 15mm 16mm;background:var(--paper);color:var(--ink);box-shadow:var(--shadow);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sheet-head{display:grid;gap:1.6mm;margin-bottom:3mm}
+.t-title{font:700 7.2mm/1.3 var(--f-display);text-align:center;border:0;background:transparent;color:var(--ink);width:100%;padding:0}
+.head-row{display:flex;justify-content:space-between;align-items:flex-end;gap:4mm;border-bottom:.3mm solid var(--ink);padding-bottom:1.4mm}
+.meta{font:500 2.9mm/1.4 var(--f-ui);white-space:nowrap}
+.t-sub{flex:1;min-width:0;font:500 3.3mm/1.4 var(--f-ui);text-align:right;border:0;background:transparent;color:var(--ink);padding:0}
+.t-title:focus,.t-sub:focus{outline:.25mm dashed var(--paper-sel);outline-offset:.6mm}
+.t-title::placeholder,.t-sub::placeholder{color:var(--ink-soft)}
+
+.system{display:grid;grid-template-columns:var(--cols);padding-top:8.4mm;padding-bottom:3.4mm;break-inside:avoid;page-break-inside:avoid}
+.clef{display:grid;grid-template-columns:4.4mm 1fr;grid-template-rows:repeat(var(--n),var(--gap))}
+.tn{grid-column:1;display:flex;align-items:center;font:500 2.3mm/1 var(--f-ui);white-space:nowrap}
+.tab{grid-column:2;grid-row:1 / -1;display:flex;flex-direction:column;align-items:center;justify-content:center;font:700 calc(var(--gap) * var(--n) / 3.5)/1 var(--f-display)}
+.tab i{font-style:normal}
+
+.measure{--lead:0mm;position:relative;display:grid;grid-template-columns:repeat(var(--steps),minmax(0,1fr));grid-template-rows:repeat(var(--n),var(--gap))}
+.measure.has-ts{grid-template-columns:var(--lead) repeat(var(--steps),minmax(0,1fr))}
+/* 拍子記号：線譜の中に上下2段の数字 */
+.tsig{grid-column:1;grid-row:1 / -1;position:relative;display:grid;grid-template-rows:repeat(var(--n),var(--gap));pointer-events:none}
+.tsig .tl{position:relative}
+.tsig .tl::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:.18mm solid var(--ink)}
+.tsig .num{position:absolute;left:0;right:0;top:calc(var(--gap) / 2);bottom:calc(var(--gap) / 2);display:flex;flex-direction:column}
+.tsig b{flex:1;display:flex;align-items:center;justify-content:center;font:700 calc(var(--gap) * (var(--n) - 1) / 2 * 1.05)/1 var(--f-display);letter-spacing:-.04em}
+.marks,.rests{position:absolute;left:var(--lead);right:0;display:grid;grid-template-columns:repeat(var(--steps),minmax(0,1fr));pointer-events:none}
+.marks{bottom:100%;height:2.4mm}
+.marks i{grid-row:1;justify-self:center;align-self:end;font:700 2.6mm/1 var(--f-ui);font-style:normal;white-space:nowrap}
+.chords{position:absolute;left:var(--lead);right:0;bottom:calc(100% + 2.4mm);height:3.2mm;display:grid;grid-template-columns:repeat(var(--steps),minmax(0,1fr));pointer-events:none}
+.chords i{grid-row:1;justify-self:start;align-self:end;font:700 3mm/1 var(--f-ui);font-style:normal;white-space:nowrap}
+.system.has-chords{padding-top:11.6mm}
+.system.has-chords .mhead{bottom:calc(100% + 5.8mm)}
+.rests{top:0;bottom:0;z-index:2}
+.rests i{grid-row:1;justify-self:center;align-self:center;display:flex}
+.rests svg{height:calc(var(--gap) * 3);width:auto;overflow:visible}
+.measure::before{content:"";position:absolute;left:0;top:calc(var(--gap) / 2);bottom:calc(var(--gap) / 2);border-left:.25mm solid var(--ink);pointer-events:none;z-index:3}
+.measure.eol::after{content:"";position:absolute;right:0;top:calc(var(--gap) / 2);bottom:calc(var(--gap) / 2);border-right:.25mm solid var(--ink);pointer-events:none;z-index:3}
+.measure.fin::after{width:1.2mm;border-left:.25mm solid var(--ink);border-right:.85mm solid var(--ink);background:var(--paper)}
+.c{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;min-width:0}
+.c::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:.18mm solid var(--ink);pointer-events:none}
+.c>span{position:relative;z-index:1;background:var(--paper);padding:0 .2mm;font:600 2.8mm/1 var(--f-fret);font-variant-numeric:tabular-nums;white-space:nowrap}
+.c>span.sym{font:italic 500 2.5mm/1 var(--f-ui)}
+.mhead{position:absolute;left:0;bottom:calc(100% + 2.4mm);display:flex;align-items:flex-end;gap:1.2mm;padding-bottom:.6mm;white-space:nowrap;pointer-events:none}
+.mno{font:italic 500 2.4mm/1 var(--f-ui)}
+.mlabel{font:700 2.5mm/1 var(--f-ui);border:.22mm solid var(--ink);padding:.5mm .9mm}
+.ticks{position:absolute;left:var(--lead);right:0;top:calc(100% + .2mm);height:1.6mm;display:grid;grid-template-columns:repeat(var(--steps),minmax(0,1fr));pointer-events:none}
+.ticks i{grid-row:1;justify-self:center;width:0;height:1.05mm;border-left:.2mm solid var(--ink-soft)}
+.ticks i.strong{height:1.6mm;border-left-color:var(--ink)}
+.no-ticks .ticks{display:none}
+/* リズム：線譜の下に符尾・連桁・付点。位置は小節幅に対する % で置く */
+.rhythm{position:absolute;left:var(--lead);right:0;top:calc(100% + .1mm);height:5.2mm;pointer-events:none}
+.rhythm .st{position:absolute;top:0;width:0;border-left:.2mm solid var(--ink)}
+.rhythm .bm{position:absolute;height:.55mm;background:var(--ink)}
+.rhythm .dot{position:absolute;width:.55mm;height:.55mm;border-radius:50%;background:var(--ink)}
+.rhythm svg{position:absolute;width:1.4mm;height:2.4mm;overflow:visible}
+.rhythm .tri{position:absolute;font:italic 600 2.2mm/1 var(--f-ui);transform:translateX(-50%)}
+.page.rhythm-on .system{padding-bottom:7.6mm}
+.ties{position:absolute;left:var(--lead);right:0;top:0;bottom:0;display:grid;grid-template-columns:repeat(var(--steps),minmax(0,1fr));grid-template-rows:repeat(var(--n),var(--gap));pointer-events:none;z-index:2}
+.ties i{align-self:start;height:1.2mm;margin-top:-.75mm;display:block}
+.ties svg{display:block;width:100%;height:100%;overflow:visible}
+
+@media screen{
+  .c.bt{box-shadow:inset .16mm 0 0 var(--paper-guide)}
+  .measure.cur{background:var(--paper-tint)}
+  .measure.cur .c>span{background:var(--paper-tint)}
+  .c:hover{background:var(--paper-hover)}
+  .c:hover>span{background:var(--paper-hover)}
+  .c.play{background:var(--paper-play)}
+  .c.play>span{background:var(--paper-play)}
+  .c.rg{background:var(--paper-range);cursor:grab}
+  .c.rg>span{background:var(--paper-range)}
+  .c.drop{background:var(--paper-sel-soft);box-shadow:inset 0 0 0 .25mm var(--paper-sel)}
+  .c.drop>span{background:var(--paper-sel-soft)}
+  body.moving,body.moving .c{cursor:grabbing}
+  .c.sel{background:var(--paper-sel-soft);box-shadow:inset 0 0 0 .3mm var(--paper-sel);z-index:2}
+  #systems{user-select:none;-webkit-user-select:none}
+  .key.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+  .c.sel>span{background:var(--paper-sel-soft)}
+}
+
+.add-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:7mm}
+.add-row .btn{font-size:13px}
+
+/* ---------- input pad ---------- */
+.pad{position:sticky;bottom:0;z-index:5;margin:0 -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--rail);border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center}
+.pad .grp{display:flex;flex-wrap:wrap;gap:4px}
+.key{appearance:none;min-width:36px;height:36px;padding:0 8px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:var(--btn);cursor:pointer;font:600 15px/1 var(--f-fret)}
+.key:hover{border-color:var(--muted)}
+.key.wide{font:500 13px/1 var(--f-ui)}
+.chordbar{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.chordbar label{font-weight:700;font-size:13px}
+.chordbar input{width:150px;padding:6px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--btn);font:600 15px/1.2 var(--f-fret)}
+.cands{display:flex;flex-wrap:wrap;gap:4px;min-width:0}
+.cand{appearance:none;border:1px solid var(--line);border-radius:6px;background:var(--btn);padding:4px 8px;cursor:pointer;font:600 13px/1.2 var(--f-fret);white-space:nowrap}
+.cand small{font:400 11px var(--f-ui);color:var(--muted);margin-left:4px}
+.cand.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.chordbar .msg,.chordbar .help{font-size:12px;color:var(--muted)}
+.key.play{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font:700 13px/1 var(--f-ui);min-width:72px}
+
+/* ---------- rail ---------- */
+.panel h2{margin:0 0 10px;font:700 12px/1.2 var(--f-ui);letter-spacing:.08em;color:var(--muted)}
+.field{display:grid;gap:3px;margin-bottom:10px}
+.field>span{font-size:12.5px;color:var(--muted)}
+.rail select,.rail input[type=text],.rail input[type=number]{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--btn)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{display:flex;align-items:center;gap:8px;font-size:13px}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.btns .btn{padding:5px 10px;font-size:13px}
+.pos{font:600 15px/1.3 var(--f-ui);margin:0 0 10px}
+.pos small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:5px 10px;margin:0;font-size:12.5px}
+.keys dt{white-space:nowrap}
+.keys dd{margin:0;color:var(--muted)}
+kbd{font:500 11.5px/1.5 var(--f-fret);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--btn);color:var(--text)}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:30;max-width:calc(100% - 32px);background:var(--text);color:var(--desk);padding:8px 14px;border-radius:6px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+
+/* ---------- in-page PDF (shared page) ---------- */
+.pdf-stage{position:fixed;left:0;top:0;z-index:40}
+.page.pdf-page{width:210mm;height:297mm;min-height:0;padding:13mm 14mm;margin:0;box-shadow:none;position:relative;overflow:hidden}
+.busy{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:var(--desk);color:var(--text);font-size:15px}
+
+/* ---------- print: A4 ---------- */
+@media print{
+  @page{size:A4 portrait;margin:13mm 14mm 14mm}
+  body{background:#fff}
+  .chrome{display:none!important}
+  .layout{display:block}
+  .desk{padding:0}
+  .sheet-scroll{overflow:visible;padding:0}
+  .page{width:auto;min-height:0;padding:0;margin:0;box-shadow:none}
+  .t-title::placeholder,.t-sub::placeholder{color:transparent}
+}
+</style>
+</head>
+<body>
+
+<header class="bar chrome">
+  <div class="brand"><b>TABメーカー</b><small id="saved" class="saved">自動保存されます</small></div>
+  <div class="actions">
+    <button class="btn" id="bNew" type="button">新規</button>
+    <button class="btn" id="bOpen" type="button">ファイルを開く</button>
+    <button class="btn" id="bExport" type="button">ファイルに書き出し</button>
+    <button class="btn" id="bText" type="button">テキストでコピー</button>
+    <button class="btn primary" id="bPrint" type="button">PDFで保存（A4）</button>
+    <input id="file" type="file" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<div class="layout">
+  <main class="desk">
+    <div class="sheet-scroll">
+      <article class="page" id="page">
+        <header class="sheet-head">
+          <input id="title" class="t-title" type="text" placeholder="曲名" autocomplete="off">
+          <div class="head-row">
+            <div class="meta" id="meta"></div>
+            <input id="sub" class="t-sub" type="text" placeholder="アーティスト / メモ" autocomplete="off">
+          </div>
+        </header>
+        <div id="systems"></div>
+        <div class="add-row chrome">
+          <button class="btn" type="button" data-add="1">＋ 1小節</button>
+          <button class="btn" type="button" data-add="4">＋ 4小節</button>
+          <button class="btn" type="button" data-add="8">＋ 8小節</button>
+        </div>
+      </article>
+    </div>
+
+    <div class="pad chrome" id="pad" aria-label="入力パッド">
+      <div class="chordbar" id="chordbar" hidden>
+        <label for="chordIn">コード</label>
+        <input id="chordIn" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Am7, G, F#m, C/E">
+        <div class="cands" id="cands"></div>
+        <span class="help">Enter で入力 ・ ↑↓ で押さえ方を選ぶ ・ Esc で閉じる</span>
+      </div>
+      <div class="grp">
+        <button class="key" data-k="0" type="button">0</button><button class="key" data-k="1" type="button">1</button><button class="key" data-k="2" type="button">2</button><button class="key" data-k="3" type="button">3</button><button class="key" data-k="4" type="button">4</button><button class="key" data-k="5" type="button">5</button><button class="key" data-k="6" type="button">6</button><button class="key" data-k="7" type="button">7</button><button class="key" data-k="8" type="button">8</button><button class="key" data-k="9" type="button">9</button>
+      </div>
+      <div class="grp">
+        <button class="key" data-k="x" type="button" title="ミュート（ゴースト）">x</button><button class="key" data-k="h" type="button" title="ハンマリング（上に記号）">h</button><button class="key" data-k="p" type="button" title="プリング（上に記号）">p</button><button class="key wide" data-k="r" type="button" title="休符">休符</button><button class="key wide" data-k="c" type="button" title="コードを入力（c）">コード</button><button class="key wide" data-k="t" type="button" title="次の同じ弦の音へタイ（t）">タイ</button><button class="key" data-k="/" type="button" title="スライド・アップ">/</button><button class="key" data-k="\" type="button" title="スライド・ダウン">\</button><button class="key" data-k="~" type="button" title="ビブラート">~</button><button class="key" data-k="b" type="button" title="チョーキング">b</button>
+      </div>
+      <div class="grp">
+        <button class="key" data-k="ArrowLeft" type="button" aria-label="左へ">←</button><button class="key" data-k="ArrowUp" type="button" aria-label="上の弦へ">↑</button><button class="key" data-k="ArrowDown" type="button" aria-label="下の弦へ">↓</button><button class="key" data-k="ArrowRight" type="button" aria-label="右へ">→</button><button class="key wide" data-k="Delete" type="button">消す</button><button class="key play" data-k="Enter" type="button" id="padPlay">▶ 再生</button>
+      </div>
+      <div class="grp">
+        <button class="key wide" data-k="RangeMode" type="button" id="padRange" title="オンの間はタップで範囲を広げる">範囲</button><button class="key wide" data-k="Copy" type="button">コピー</button><button class="key wide" data-k="Cut" type="button">切り取り</button><button class="key wide" data-k="Paste" type="button">貼り付け</button>
+      </div>
+      <div class="grp" aria-label="選んだ範囲を移動">
+        <button class="key" data-k="MoveL" type="button" title="範囲を左へ移動（⌥←）">⇠</button><button class="key" data-k="MoveR" type="button" title="範囲を右へ移動（⌥→）">⇢</button><button class="key" data-k="MoveU" type="button" title="範囲を上の弦へ移動（⌥↑）">⇡</button><button class="key" data-k="MoveD" type="button" title="範囲を下の弦へ移動（⌥↓）">⇣</button>
+      </div>
+    </div>
+  </main>
+
+  <aside class="rail chrome">
+    <section class="panel">
+      <h2>選択中のマス</h2>
+      <p class="pos" id="pos"></p>
+      <label class="field"><span>セクション名（Aメロ、サビ など）</span><input id="mlabel" type="text" placeholder="なし" autocomplete="off"></label>
+      <label class="field"><span>この小節の拍子</span><select id="mts"></select></label>
+      <label class="check" style="margin:-4px 0 10px"><input id="mtsAfter" type="checkbox"> 後ろの小節にもまとめて適用</label>
+      <div class="btns">
+        <button class="btn" type="button" id="mIns">後ろに挿入</button>
+        <button class="btn" type="button" id="mDup">複製</button>
+        <button class="btn" type="button" id="mCopy">コピー</button>
+        <button class="btn" type="button" id="mPaste">貼り付け</button>
+        <button class="btn" type="button" id="mClear">中身を消す</button>
+        <button class="btn danger" type="button" id="mDel">小節を削除</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>楽器と譜面</h2>
+      <label class="field"><span>楽器・チューニング</span><select id="preset"></select></label>
+      <div class="two">
+        <label class="field"><span>拍子（全体）</span><select id="ts"></select></label>
+        <label class="field"><span>マスの細かさ</span><select id="grid"></select></label>
+      </div>
+      <div class="two">
+        <label class="field"><span>1段の小節数</span><select id="perLine"><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+        <label class="field"><span>スペースで進む幅</span><select id="move"></select></label>
+      </div>
+      <label class="field"><span>ハンマリング／プリングの記号</span><select id="hpStyle"><option value="arrow">＜（ハンマリング）／＞（プリング）</option><option value="letter">H ／ P</option></select></label>
+      <label class="field"><span>線譜の下</span><select id="rhythm"><option value="stems">リズム（符尾・連桁）</option><option value="ticks">拍の目盛り</option><option value="none">何も描かない</option></select></label>
+      <div class="two">
+        <label class="field"><span>カポ</span><select id="capo"></select></label>
+        <label class="field"><span>コード名の書き方</span><select id="chordMode"><option value="shape">押さえ形で</option><option value="sound">実音で</option></select></label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>再生して確認</h2>
+      <div class="two">
+        <label class="field"><span>テンポ（♩=）</span><input id="tempo" type="number" min="30" max="300" step="1"></label>
+        <label class="field"><span>範囲</span><select id="range"><option value="from">選択小節から最後まで</option><option value="loop">選択小節をループ</option></select></label>
+      </div>
+      <button class="btn primary" type="button" id="bPlay">▶ 再生</button>
+    </section>
+
+    <section class="panel">
+      <h2>キー操作</h2>
+      <dl class="keys">
+        <dt><kbd>0</kbd>–<kbd>9</kbd></dt><dd>フレット（12 などは続けて打つ）</dd>
+        <dt><kbd>x</kbd> <kbd>/</kbd> <kbd>\</kbd> <kbd>~</kbd> <kbd>b</kbd></dt><dd>ミュート・スライド・ビブラート・チョーキング</dd>
+        <dt><kbd>h</kbd> <kbd>p</kbd></dt><dd>ハンマリング／プリングの記号を上に付ける（行き先の音で押す。もう一度で消える）</dd>
+        <dt><kbd>r</kbd></dt><dd>休符（長さは次の音までで自動。もう一度で消える）</dd>
+        <dt><kbd>c</kbd></dt><dd>コード入力（Am7、G、C/E など）。押さえ方を縦1列に入れて次へ進む。<kbd>c</kbd>→<kbd>Enter</kbd> で同じコードをもう一度</dd>
+        <dt><kbd>t</kbd></dt><dd>タイ：選んだ音から同じ弦の次の音へ弧を付ける（次の音は弾き直さない）。もう一度で外す</dd>
+        <dt><kbd>⇧</kbd>+<kbd>Delete</kbd></dt><dd>縦1列（コードごと）消す</dd>
+        <dt><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></dt><dd>1マス・1弦ずつ移動</dd>
+        <dt><kbd>Space</kbd></dt><dd>設定した音価ぶん進む（⇧で戻る）</dd>
+        <dt><kbd>Tab</kbd></dt><dd>次の小節へ（⇧で前へ）</dd>
+        <dt><kbd>Delete</kbd> <kbd>⌫</kbd></dt><dd>消す</dd>
+        <dt><kbd>Enter</kbd></dt><dd>再生 / 停止</dd>
+        <dt><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></dt><dd>元に戻す / やり直す</dd>
+        <dt><kbd>⇧</kbd>+矢印・<kbd>⇧</kbd>+クリック・ドラッグ</dt><dd>範囲を選ぶ（小節をまたいでOK）。<kbd>Esc</kbd> で解除</dd>
+        <dt><kbd>⌘C</kbd> <kbd>⌘X</kbd> <kbd>⌘V</kbd></dt><dd>範囲のコピー / 切り取り / 貼り付け（範囲なしなら小節ごと）。貼り付けはクリックした位置から。複数の弦は同じ弦へ、1本だけならクリックした弦へ入る。<kbd>Delete</kbd> で範囲を消す</dd>
+        <dt><kbd>⌥</kbd>+<kbd>←</kbd><kbd>→</kbd></dt><dd>選んだ範囲（なければ今のマス）を1マス移動。<kbd>⇧</kbd>も押すとスペースの幅で移動</dd>
+        <dt><kbd>⌥</kbd>+<kbd>↑</kbd><kbd>↓</kbd></dt><dd>隣の弦へ移す（フレットの数字はそのまま）。<kbd>⇧</kbd>も押すと同じ音になるようフレットを付け替える</dd>
+        <dt>範囲をドラッグ</dt><dd>移動。<kbd>⌥</kbd>を押しながらで複製</dd>
+        <dt><kbd>⌘D</kbd></dt><dd>小節を複製</dd>
+      </dl>
+    </section>
+
+    <p class="hint" id="hint">PDFは「PDFで保存」→ 印刷画面で送信先を「PDFとして保存」、用紙A4、「ヘッダーとフッター」をオフにしてください。</p>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="busy" id="busy" hidden><p>A4のPDFを作っています…</p></div>
+
+<script>
+(() => {
+'use strict';
+const KEY = 'tabmaker.v1';
+const PRESETS = {
+  b4:  { name: '4弦ベース', tune: [43, 38, 33, 28] },
+  b4d: { name: '4弦ベース（ドロップD）', tune: [43, 38, 33, 26] },
+  b4h: { name: '4弦ベース（半音下げ）', tune: [42, 37, 32, 27] },
+  b5:  { name: '5弦ベース', tune: [43, 38, 33, 28, 23] },
+  g6:  { name: 'ギター', tune: [64, 59, 55, 50, 45, 40] },
+  g6d: { name: 'ギター（ドロップD）', tune: [64, 59, 55, 50, 45, 38] },
+  g6h: { name: 'ギター（半音下げ）', tune: [63, 58, 54, 49, 44, 39] },
+};
+const NOTE = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
+const TS = { '4/4': [4, 4], '3/4': [3, 4], '2/4': [2, 4], '5/4': [5, 4], '6/4': [6, 4],
+  '6/8': [6, 8], '5/8': [5, 8], '7/8': [7, 8], '9/8': [9, 8], '12/8': [12, 8] };
+const SYMS = ['x', '/', '\\', '~', 'b'];
+const $ = s => document.querySelector(s);
+
+let state, undo = [], redo = [], clip = null, last = { k: '', t: 0 };
+const sel = { m: 0, s: 0, r: 0 };
+
+/* ---------- model helpers ---------- */
+/* 拍子は全体設定（st.ts）と、小節ごとの上書き（measure.ts、null なら全体と同じ）の2段構え */
+const tsOf = (ms, st = state) => (ms && ms.ts && TS[ms.ts] ? ms.ts : st.ts);
+const unitOf = (st = state, ts = st.ts) => TS[ts][1];
+function spu(st = state, ts = st.ts) {
+  const map = unitOf(st, ts) === 4 ? { 16: 4, 8: 2, 3: 3 } : { 16: 2, 8: 1 };
+  return map[st.grid] || (unitOf(st, ts) === 4 ? 4 : 2);
+}
+const spm = (st = state, ts = st.ts) => TS[ts][0] * spu(st, ts);
+const mTs = (m, st = state) => tsOf(st.measures[m], st);
+const mSteps = (m, st = state) => spm(st, mTs(m, st));
+const nStr = (st = state) => st.tune.length;
+const noteName = midi => NOTE[((midi % 12) + 12) % 12];
+// marks: 線譜の上の記号（'h' / 'p'）、rests: 休符（'r'）、chords: コード名。どれもマスごと
+const emptyMeasure = (st = state, ts = null) => {
+  const len = spm(st, ts || st.ts);
+  return { label: '', ts, cells: Array.from({ length: nStr(st) }, () => Array(len).fill('')),
+    ties: Array.from({ length: nStr(st) }, () => Array(len).fill('')),
+    marks: Array(len).fill(''), rests: Array(len).fill(''), chords: Array(len).fill('') };
+};
+
+/* ---------- chords ---------- */
+const QUALS = [
+  [['', 'M', 'maj'], [0, 4, 7]],
+  [['m', 'min', '-'], [0, 3, 7]],
+  [['7'], [0, 4, 7, 10]],
+  [['m7', 'min7', '-7'], [0, 3, 7, 10]],
+  [['maj7', 'M7', '△7', 'Δ7', '△', 'Δ'], [0, 4, 7, 11]],
+  [['mmaj7', 'mM7', 'm(maj7)', 'm△7'], [0, 3, 7, 11]],
+  [['6'], [0, 4, 7, 9]],
+  [['m6'], [0, 3, 7, 9]],
+  [['sus4', 'sus'], [0, 5, 7]],
+  [['sus2'], [0, 2, 7]],
+  [['7sus4', '7sus'], [0, 5, 7, 10]],
+  [['dim', '°', 'o'], [0, 3, 6]],
+  [['dim7', '°7', 'o7'], [0, 3, 6, 9]],
+  [['m7b5', 'm7-5', 'm7(b5)', 'm7(-5)', 'ø', 'ø7'], [0, 3, 6, 10]],
+  [['aug', '+', '+5', '#5'], [0, 4, 8]],
+  [['aug7', '7#5', '7+5', '+7'], [0, 4, 8, 10]],
+  [['add9', 'add2'], [0, 4, 7, 2]],
+  [['madd9', 'm(add9)'], [0, 3, 7, 2]],
+  [['9'], [0, 4, 7, 10, 2]],
+  [['m9'], [0, 3, 7, 10, 2]],
+  [['maj9', 'M9'], [0, 4, 7, 11, 2]],
+  [['5'], [0, 7]],
+];
+const LETTER = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+function parseChord(text) {
+  const t = text.trim().replace(/♯/g, '#').replace(/♭/g, 'b');
+  const m = t.match(/^([A-Ga-g])([#b]?)(.*?)(?:\/([A-Ga-g])([#b]?))?$/);
+  if (!m) return null;
+  const q = QUALS.find(([names]) => names.includes(m[3]));
+  if (!q) return null;
+  const pc = (l, a) => (LETTER[l.toUpperCase()] + (a === '#' ? 1 : a === 'b' ? -1 : 0) + 12) % 12;
+  const root = pc(m[1], m[2]);
+  const bass = m[4] ? pc(m[4], m[5]) : root;
+  const sym = a => (a === '#' ? '♯' : a === 'b' ? '♭' : '');
+  const name = m[1].toUpperCase() + sym(m[2]) + m[3] + (m[4] ? '/' + m[4].toUpperCase() + sym(m[5]) : '');
+  return { name, root, bass, pcs: [...new Set(q[1].map(i => (root + i) % 12))], fifth: q[1].includes(7) && q[1].length >= 3 ? (root + 7) % 12 : null };
+}
+// 今のチューニングで押さえられる形を総当たりで探し、弾きやすい順に並べる
+// frets は上の弦（配列の先頭）から。null はミュート
+function voicings(ch, tune) {
+  const n = tune.length, tones = new Set(ch.pcs);
+  const minSound = tones.size <= 2 ? 2 : n >= 6 ? 4 : 3;
+  const best = new Map();
+  for (let p = 0; p <= 12; p++) {
+    const frets = p === 0 ? [0, 1, 2, 3] : [0, p, p + 1, p + 2, p + 3];
+    const opts = tune.map((t, r) => {
+      const o = [null];
+      for (const f of frets) { const pc = (t + f) % 12; if (tones.has(pc) || pc === ch.bass) o.push(f); }
+      return [...new Set(o)];
+    });
+    const cur = Array(n).fill(null);
+    const rec = i => {
+      if (i < 0) return evaluate(cur);
+      for (const f of opts[i]) { cur[i] = f; rec(i - 1); }
+    };
+    rec(n - 1);
+  }
+  function evaluate(fr) {
+    let b = -1;
+    for (let r = n - 1; r >= 0; r--) if (fr[r] !== null) { b = r; break; }
+    if (b < 0) return;
+    for (let r = 0; r < b; r++) if (fr[r] === null) return;  // ミュートは低音側だけ
+    const sounding = b + 1;
+    if (sounding < minSound) return;
+    if ((tune[b] + fr[b]) % 12 !== ch.bass) return;
+    const have = new Set();
+    for (let r = 0; r <= b; r++) {
+      const pc = (tune[r] + fr[r]) % 12;
+      if (r < b && !tones.has(pc)) return;
+      have.add(pc);
+    }
+    let omitted = 0;
+    for (const pc of tones) if (!have.has(pc)) { if (pc === ch.fifth) omitted++; else return; }
+    const fretted = fr.slice(0, sounding).filter(f => f > 0);
+    const hasOpen = fr.slice(0, sounding).some(f => f === 0);
+    const minF = fretted.length ? Math.min(...fretted) : 0, maxF = fretted.length ? Math.max(...fretted) : 0;
+    let fingers, barre = false;
+    if (hasOpen) fingers = fretted.length;
+    else {
+      const atMin = fretted.filter(f => f === minF).length;
+      barre = atMin > 1;
+      fingers = (barre ? 1 : atMin) + fretted.filter(f => f > minF).length;
+    }
+    if (fingers > 4) return;
+    const score = minF + (n - sounding) + omitted + (barre ? 1.2 : 0) + fingers * 0.3 - sounding * 0.8
+      + (maxF - minF) * 0.2 + (maxF - minF >= 3 ? 2 : 0) + (hasOpen && minF >= 5 ? 1.5 : 0) + (hasOpen && maxF >= 4 ? 2 : 0);
+    const key = fr.join(',');
+    if (!best.has(key) || best.get(key).score > score) best.set(key, { frets: fr.slice(), score, pos: minF });
+  }
+  return [...best.values()].sort((a, b) => a.score - b.score).slice(0, 6);
+}
+const shapeText = fr => {
+  const low = fr.slice().reverse();
+  return low.map(f => (f === null ? 'x' : f)).join(low.some(f => f !== null && f > 9) ? '-' : '');
+};
+const tsOverride = m => (state.measures[m] ? state.measures[m].ts || null : null);
+// 位置を「全音符の何分のいくつ」に換算して移す（はみ出した音は捨てる）
+function remapRow(row, fromTs, toTs, fromSt = state, toSt = state) {
+  const os = spu(fromSt, fromTs), ou = unitOf(fromSt, fromTs), ns = spu(toSt, toTs), nu = unitOf(toSt, toTs), len = spm(toSt, toTs);
+  const out = Array(len).fill('');
+  row.forEach((v, s) => {
+    if (!v) return;
+    const t = Math.round(s / (os * ou) * ns * nu);
+    if (t < len) out[t] = v;
+  });
+  return out;
+}
+function remapMeasure(ms, fromTs, toTs, fromSt = state, toSt = state) {
+  ms.cells = ms.cells.map(row => remapRow(row, fromTs, toTs, fromSt, toSt));
+  ms.ties = ms.ties.map(row => remapRow(row, fromTs, toTs, fromSt, toSt));
+  ms.marks = remapRow(ms.marks, fromTs, toTs, fromSt, toSt);
+  ms.rests = remapRow(ms.rests, fromTs, toTs, fromSt, toSt);
+  ms.chords = remapRow(ms.chords, fromTs, toTs, fromSt, toSt);
+}
+// コード名は前と変わったところだけ表示する
+function visibleChords() {
+  let lastName = '';
+  return state.measures.map(ms => ms.chords.map(c => {
+    if (!c) return '';
+    const show = c !== lastName ? c : '';
+    lastName = c;
+    return show;
+  }));
+}
+// 音価は「次の音（または休符・小節の終わり）まで」で決める。4分音符=1
+const REST_SIZES = [4, 3, 2, 1.5, 1, 0.75, 0.5, 0.25];
+const isNote = v => /^(\d+|x)$/.test(v);
+const isEvent = (ms, s) => !!ms.rests[s] || ms.cells.some(row => isNote(row[s]));
+function nextEvent(ms, s, steps) {
+  let n = s + 1;
+  while (n < steps && !isEvent(ms, n)) n++;
+  return n;
+}
+function quarters(ts, len) {
+  const u = spu(state, ts), unit = unitOf(state, ts);
+  const q = u === 3 && unit === 4 ? (len === 1 ? 0.5 : len === 2 ? 1 : len / 3) : len / u * 4 / unit;
+  return REST_SIZES.find(x => x <= q + 1e-9) || 0.25;
+}
+function restLength(m, s) {
+  const ms = state.measures[m], steps = mSteps(m), next = nextEvent(ms, s, steps);
+  if (s === 0 && next === steps) return 'whole';
+  return quarters(mTs(m), next - s);
+}
+
+// 線譜の下のリズム：符尾、連桁（同じ拍グループ内でつなぐ）、付点、単独の8分・16分は旗
+function rhythmHtml(m) {
+  const ms = state.measures[m], steps = mSteps(m), ts = mTs(m), u = spu(state, ts), unit = unitOf(state, ts), beats = TS[ts][0];
+  const triplet = u === 3 && unit === 4;
+  const group = triplet ? u : unit === 4 ? (beats % 2 === 0 ? 2 * u : u) : (beats % 3 === 0 ? 3 * u : 2 * u);
+  const ev = [];
+  for (let s = 0; s < steps; s++) {
+    if (!isEvent(ms, s)) continue;
+    const q = quarters(ts, nextEvent(ms, s, steps) - s);
+    const rest = !ms.cells.some(row => isNote(row[s]));
+    ev.push({ s, q, rest, beams: rest ? 0 : q < 0.5 ? 2 : q < 1 ? 1 : 0, dot: [3, 1.5, 0.75].includes(q), g: Math.floor(s / group) });
+  }
+  const X = s => ((s + 0.5) / steps * 100).toFixed(3), cell = 100 / steps, H = 5.2, B2 = H - 0.55 - 0.85;
+  let h = '<div class="rhythm">';
+  for (const e of ev) {
+    if (e.rest || e.q >= 4) continue;
+    const len = e.q >= 2 ? H * 0.55 : H;
+    h += `<i class="st" style="left:${X(e.s)}%;height:${len}mm"></i>`;
+    if (e.dot) h += `<i class="dot" style="left:calc(${X(e.s)}% + .55mm);top:${(H * 0.5).toFixed(2)}mm"></i>`;
+  }
+  // 連桁でつなぐまとまり（休符・4分以上・拍グループの切れ目で区切る）
+  const runs = [];
+  let cur = [];
+  for (const e of ev) {
+    const prev = cur[cur.length - 1];
+    if (e.beams && prev && prev.g === e.g) cur.push(e);
+    else { if (cur.length) runs.push(cur); cur = e.beams ? [e] : []; }
+  }
+  if (cur.length) runs.push(cur);
+  for (const run of runs) {
+    if (run.length === 1) {
+      const e = run[0];
+      for (let k = 0; k < e.beams; k++) {
+        h += `<svg viewBox="0 0 6 10" style="left:${X(e.s)}%;top:${(H - 2.4 - k * 0.8).toFixed(2)}mm"><path d="M0 10 C0.4 7 5.4 6.4 4.8 2" fill="none" stroke="currentColor" stroke-width="0.9"/></svg>`;
+      }
+      continue;
+    }
+    const a = run[0].s, b = run[run.length - 1].s;
+    h += `<i class="bm" style="left:${X(a)}%;width:${(b - a) * cell}%;top:${H - 0.55}mm"></i>`;
+    run.forEach((e, i) => {
+      if (e.beams < 2) return;
+      const nx = run[i + 1], pv = run[i - 1];
+      if (nx && nx.beams >= 2) h += `<i class="bm" style="left:${X(e.s)}%;width:${(nx.s - e.s) * cell}%;top:${B2}mm"></i>`;
+      else if (!(pv && pv.beams >= 2)) {
+        const w = cell * 0.7;
+        h += pv ? `<i class="bm" style="left:calc(${X(e.s)}% - ${w}%);width:${w}%;top:${B2}mm"></i>`
+                : `<i class="bm" style="left:${X(e.s)}%;width:${w}%;top:${B2}mm"></i>`;
+      }
+    });
+    if (triplet) h += `<i class="tri" style="left:${((+X(a) + +X(b)) / 2).toFixed(3)}%;top:${H + 0.4}mm">3</i>`;
+  }
+  return h + '</div>';
+}
+
+// タイ：選んだ音から同じ弦の次の音まで、数字の上に弧
+function tiesHtml(m) {
+  const ms = state.measures[m], steps = mSteps(m);
+  const arc = '<svg viewBox="0 0 100 10" preserveAspectRatio="none"><path d="M3 9 Q50 -4 97 9" fill="none" stroke="currentColor" stroke-width="0.75" vector-effect="non-scaling-stroke"/></svg>';
+  let h = '';
+  ms.ties.forEach((row, r) => row.forEach((v, s) => {
+    if (!v) return;
+    let t = s + 1;
+    while (t < steps && !isNote(ms.cells[r][t])) t++;
+    const span = Math.max(1, t - s);
+    h += `<i style="grid-row:${r + 1};grid-column:${s + 1} / ${t < steps ? t + 1 : -1};transform:translateX(${(50 / span).toFixed(3)}%)">${arc}</i>`;
+  }));
+  return h ? `<div class="ties">${h}</div>` : '';
+}
+// 直前の同じ弦の音からタイでつながっているか（再生で弾き直さないため）
+function tiedInto(m, r, s) {
+  for (let mm = m, ss = s - 1; mm >= 0 && mm >= m - 1; mm--) {
+    const ms = state.measures[mm];
+    if (mm !== m) ss = mSteps(mm) - 1;
+    for (; ss >= 0; ss--) if (isNote(ms.cells[r][ss])) return !!ms.ties[r][ss];
+  }
+  return false;
+}
+function restSvg(q) {
+  const base = q === 'whole' || q >= 4 ? 'whole' : q >= 2 ? 'half' : q >= 1 ? 'q' : q >= 0.5 ? 'e' : 's';
+  const dotted = [3, 1.5, 0.75].includes(q);
+  const k = 'fill="currentColor"', st = 'fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"';
+  const shapes = {
+    whole: `<line x1="0.5" y1="11" x2="9.5" y2="11" ${st} stroke-width="0.8"/><rect x="2" y="11" width="6" height="3.6" ${k}/>`,
+    half: `<line x1="0.5" y1="16" x2="9.5" y2="16" ${st} stroke-width="0.8"/><rect x="2" y="12.4" width="6" height="3.6" ${k}/>`,
+    q: `<path d="M3.6 4 L7.4 9.2 L4.2 13.2 L7.6 18.4 C5.2 17.2 3.4 18.8 5.4 23" ${st} stroke-width="1.7"/>`,
+    e: `<circle cx="3.6" cy="11" r="1.6" ${k}/><path d="M3.8 12.4 C5.4 13 7 12.2 8 10.4 L5.2 22" ${st} stroke-width="1"/>`,
+    s: `<circle cx="4" cy="8.6" r="1.5" ${k}/><circle cx="3" cy="13.8" r="1.5" ${k}/><path d="M4.2 10 C5.8 10.6 7.4 9.8 8.4 8 L4.6 24 M3.2 15.2 C4.8 15.8 6.2 15 7.2 13.2" ${st} stroke-width="1"/>`,
+  };
+  return `<svg viewBox="0 0 10 30" aria-hidden="true">${shapes[base]}${dotted ? `<circle cx="9.6" cy="12" r="1" ${k}/>` : ''}</svg>`;
+}
+const markText = v => (state.hpStyle === 'letter' ? { h: 'H', p: 'P' } : { h: '<', p: '>' })[v] || '';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+
+function gridOptions(st = state) {
+  return unitOf(st) === 4 ? [['16', '16分'], ['8', '8分'], ['3', '8分3連']] : [['16', '16分'], ['8', '8分']];
+}
+function moveOptions(st = state) {
+  const u = spu(st);
+  if (unitOf(st) === 4) {
+    if (u === 4) return [['1', '1マス（16分）'], ['2', '8分'], ['4', '4分']];
+    if (u === 2) return [['1', '1マス（8分）'], ['2', '4分']];
+    return [['1', '1マス（3連）'], ['3', '4分']];
+  }
+  return u === 2 ? [['1', '1マス（16分）'], ['2', '8分'], ['6', '付点4分']] : [['1', '1マス（8分）'], ['3', '付点4分']];
+}
+function stepDur(m) {
+  const ts = mTs(m), beat = unitOf(state, ts) === 4 ? 60 / state.tempo : 30 / state.tempo;
+  return beat / spu(state, ts);
+}
+
+function sample() {
+  const st = { title: '8ビートの練習フレーズ', sub: 'サンプル — 自由に書き換えてください', preset: 'b4', tune: PRESETS.b4.tune.slice(),
+    tempo: 112, ts: '4/4', grid: '16', perLine: 4, rhythm: 'stems', capo: 0, chordMode: 'shape', hpStyle: 'arrow', measures: [] };
+  for (let i = 0; i < 8; i++) st.measures.push(emptyMeasure(st));
+  const put = (m, r, list) => list.forEach(([s, v]) => { st.measures[m].cells[r][s] = v; });
+  // 行: 0=G 1=D 2=A 3=E
+  st.measures[0].label = 'イントロ';
+  put(0, 3, [[0, '0'], [4, '0'], [8, '0'], [12, '0'], [14, '4']]);
+  put(0, 1, [[2, '2'], [6, '2'], [10, '2']]);
+  put(1, 2, [[0, '0'], [4, '0'], [8, '0'], [12, '2'], [14, '4']]);
+  put(1, 0, [[2, '2'], [6, '2'], [10, '2']]);
+  st.measures[1].marks[14] = 'h';
+  st.measures[2].label = 'Aメロ';
+  put(2, 3, [[0, '0'], [3, '0'], [6, '0'], [10, '0'], [14, '3']]);
+  put(2, 2, [[8, '2'], [12, '0']]);
+  put(3, 3, [[0, '5'], [3, '5'], [6, '5'], [8, 'x'], [10, '5'], [12, '3'], [13, '/'], [14, '5']]);
+  put(4, 3, [[0, '0'], [3, '0'], [6, '0'], [10, '0'], [14, '3']]);
+  put(4, 2, [[8, '2'], [12, '0']]);
+  put(5, 3, [[0, '3'], [2, '3'], [4, '5'], [6, '5'], [8, '7'], [10, '5']]);
+  st.measures[5].marks[10] = 'p';
+  st.measures[5].rests[12] = 'r';
+  return st;
+}
+
+function normalize(st) {
+  if (!st || typeof st !== 'object' || !Array.isArray(st.measures)) throw new Error('形式が違います');
+  const out = {
+    title: String(st.title ?? ''), sub: String(st.sub ?? ''),
+    preset: PRESETS[st.preset] ? st.preset : 'b4',
+    tune: Array.isArray(st.tune) && st.tune.length >= 4 && st.tune.length <= 7 ? st.tune.map(Number) : PRESETS.b4.tune.slice(),
+    tempo: Math.min(300, Math.max(30, Number(st.tempo) || 120)),
+    ts: TS[st.ts] ? st.ts : '4/4', grid: String(st.grid ?? '16'),
+    perLine: Math.min(6, Math.max(2, Number(st.perLine) || 4)),
+    rhythm: ['stems', 'ticks', 'none'].includes(st.rhythm) ? st.rhythm : st.ticks === false ? 'none' : 'stems',
+    capo: Math.min(12, Math.max(0, Math.round(Number(st.capo) || 0))),
+    chordMode: st.chordMode === 'sound' ? 'sound' : 'shape',
+    hpStyle: st.hpStyle === 'letter' ? 'letter' : 'arrow', measures: [],
+  };
+  if (!gridOptions(out).some(o => o[0] === out.grid)) out.grid = '16';
+  const n = nStr(out);
+  out.measures = st.measures.map(ms => {
+    const ts = ms && TS[ms.ts] ? ms.ts : null, steps = spm(out, ts || out.ts);
+    const row = (arr, ok) => Array.from({ length: steps }, (_, s) => (ok(arr?.[s]) ? arr[s] : ''));
+    const res = {
+      label: String(ms?.label ?? ''), ts,
+      cells: Array.from({ length: n }, (_, r) => Array.from({ length: steps }, (_, s) => String(ms?.cells?.[r]?.[s] ?? '').slice(0, 3))),
+      ties: Array.from({ length: n }, (_, r) => row(ms?.ties?.[r], v => v === 't')),
+      marks: row(ms?.marks, v => v === 'h' || v === 'p'),
+      rests: row(ms?.rests, v => v === 'r'),
+      chords: row(ms?.chords, v => typeof v === 'string' && v.length <= 16),
+    };
+    // 旧形式：線の中に置いた h / p は、次の音の上の記号に移す
+    res.cells.forEach(cells => cells.forEach((v, s) => {
+      if (v !== 'h' && v !== 'p') return;
+      cells[s] = '';
+      const t = cells.findIndex((w, k) => k > s && w);
+      if (t >= 0) res.marks[t] = v;
+    }));
+    return res;
+  });
+  if (!out.measures.length) out.measures.push(emptyMeasure(out));
+  return out;
+}
+
+/* ---------- persistence ---------- */
+let saveTimer = null;
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); $('#saved').textContent = '自動保存済み'; }
+  catch { $('#saved').textContent = '自動保存できません（ファイルに書き出してください）'; }
+  clearTimeout(saveTimer);
+}
+function load() {
+  try { const raw = localStorage.getItem(KEY); return raw ? normalize(JSON.parse(raw)) : null; } catch { return null; }
+}
+
+/* ---------- rendering ---------- */
+function render() {
+  const page = $('#page'), n = nStr(), per = state.perLine;
+  page.style.setProperty('--n', n);
+  page.classList.toggle('no-ticks', state.rhythm !== 'ticks');
+  page.classList.toggle('rhythm-on', state.rhythm === 'stems');
+  const M = state.measures;
+  const clef = '<div class="clef">' + state.tune.map((t, r) => `<span class="tn" style="grid-row:${r + 1}">${noteName(t)}</span>`).join('')
+    + '<span class="tab"><i>T</i><i>A</i><i>B</i></span></div>';
+  const ticksFor = ts => {
+    const u = spu(state, ts), steps = spm(state, ts), beats = TS[ts][0];
+    const strongEvery = unitOf(state, ts) === 8 && beats % 3 === 0 ? 3 * u : steps;
+    let h = '<div class="ticks">';
+    for (let s = 0; s < steps; s += u) h += `<i style="grid-column:${s + 1}"${s % strongEvery === 0 ? ' class="strong"' : ''}></i>`;
+    return h + '</div>';
+  };
+
+  const vis = visibleChords();
+  let html = '';
+  for (let i = 0; i < M.length; i += per) {
+    // 小節の幅はマス数に比例。最後の段が短いときは空きトラックで埋める
+    const idx = [];
+    for (let m = i; m < Math.min(i + per, M.length); m++) idx.push(m);
+    let cols = '10mm ' + idx.map(m => `minmax(0,${mSteps(m)}fr)`).join(' ');
+    if (idx.length < per) cols += ` minmax(0,${(per - idx.length) * spm()}fr)`;
+    const hasChords = idx.some(m => vis[m].some(Boolean));
+    html += `<div class="system${hasChords ? ' has-chords' : ''}" style="--cols:${cols}">` + clef;
+    for (const m of idx) {
+      const ms = M[m], ts = mTs(m), steps = mSteps(m), u = spu(state, ts);
+      const eol = m === i + per - 1 || m === M.length - 1, fin = m === M.length - 1;
+      // 拍子記号は曲の頭と、拍子が変わる小節の頭に線譜の中へ描く
+      const showTs = m === 0 || ts !== mTs(m - 1);
+      const [tn, td] = ts.split('/');
+      const lead = showTs ? (tn.length > 1 || td.length > 1 ? '6.4mm' : '4.6mm') : '0mm';
+      html += `<div class="measure${showTs ? ' has-ts' : ''}${eol ? ' eol' : ''}${fin ? ' fin' : ''}${m === sel.m ? ' cur' : ''}" data-m="${m}" style="--steps:${steps};--lead:${lead}">`;
+      if (showTs) html += `<div class="tsig" title="${ts}">${'<span class="tl"></span>'.repeat(n)}<span class="num"><b>${tn}</b><b>${td}</b></span></div>`;
+      const head = (m === i ? `<span class="mno">${m + 1}</span>` : '')
+        + (ms.label ? `<span class="mlabel">${esc(ms.label)}</span>` : '');
+      if (head) html += `<div class="mhead">${head}</div>`;
+      if (vis[m].some(Boolean)) {
+        html += '<div class="chords">' + vis[m].map((v, s) => (v ? `<i style="grid-column:${s + 1}">${esc(v)}</i>` : '')).join('') + '</div>';
+      }
+      if (ms.marks.some(Boolean)) {
+        html += '<div class="marks">' + ms.marks.map((v, s) => (v ? `<i style="grid-column:${s + 1}">${esc(markText(v))}</i>` : '')).join('') + '</div>';
+      }
+      if (ms.rests.some(Boolean)) {
+        html += '<div class="rests">' + ms.rests.map((v, s) => (v ? `<i style="grid-column:${s + 1}">${restSvg(restLength(m, s))}</i>` : '')).join('') + '</div>';
+      }
+      for (let r = 0; r < n; r++) {
+        for (let s = 0; s < steps; s++) {
+          const v = ms.cells[r][s];
+          const cls = 'c' + (s > 0 && s % u === 0 ? ' bt' : '') + (m === sel.m && r === sel.r && s === sel.s ? ' sel' : '');
+          const inner = v ? `<span${/^(\d+|x)$/.test(v) ? '' : ' class="sym"'}>${esc(v)}</span>` : '';
+          html += `<div class="${cls}" data-m="${m}" data-r="${r}" data-s="${s}">${inner}</div>`;
+        }
+      }
+      html += tiesHtml(m) + (state.rhythm === 'stems' ? rhythmHtml(m) : ticksFor(ts)) + '</div>';
+    }
+    html += '</div>';
+  }
+  $('#systems').innerHTML = html;
+  applyRangeClasses();
+  const p = PRESETS[state.preset];
+  $('#meta').textContent = `${p ? p.name : ''}　Tuning: ${state.tune.slice().reverse().map(noteName).join(' ')}${state.capo ? `　Capo ${state.capo}` : ''}　♩ = ${state.tempo}　${state.ts}`;
+}
+
+function cellEl(m, r, s) { return document.querySelector(`.c[data-m="${m}"][data-r="${r}"][data-s="${s}"]`); }
+
+function updateRail() {
+  const ts = mTs(sel.m), u = spu(state, ts), beat = Math.floor(sel.s / u) + 1, off = sel.s % u;
+  const unitName = unitOf(state, ts) === 8 ? '8分' : '';
+  $('#pos').innerHTML = `${sel.m + 1}小節目（${ts}）・${esc(noteName(state.tune[sel.r]))}弦<small>${unitName}${beat}拍目${off ? `（+${off}/${u}）` : '（頭）'}・全${state.measures.length}小節</small>`;
+  if (hasRange()) {
+    const b = rangeBounds();
+    $('#pos').innerHTML += `<small>範囲選択中：${b.g1 - b.g0 + 1}マス × ${b.r1 - b.r0 + 1}弦（⌘C でコピー・Esc で解除）</small>`;
+  }
+  const ml = $('#mlabel');
+  if (document.activeElement !== ml) ml.value = state.measures[sel.m].label;
+  const mts = $('#mts');
+  mts.innerHTML = `<option value="">全体と同じ（${state.ts}）</option>` + Object.keys(TS).map(k => `<option value="${k}">${k}</option>`).join('');
+  mts.value = tsOverride(sel.m) || '';
+}
+
+/* ---------- 範囲選択 ----------
+   anchor から sel（カーソル）までの長方形。時間方向は小節をまたいで通し番号（g）で数える */
+let anchor = null;      // null なら範囲なし
+let rangeMode = false;  // タッチ用：オンの間はタップで範囲を広げる
+function offsets() {
+  const off = [];
+  let g = 0;
+  state.measures.forEach((_, m) => { off.push(g); g += mSteps(m); });
+  off.push(g);
+  return off;
+}
+function posOf(g, off) {
+  let m = 0;
+  while (m < state.measures.length - 1 && off[m + 1] <= g) m++;
+  return { m, s: g - off[m] };
+}
+function rangeBounds() {
+  if (!anchor) return null;
+  const off = offsets(), ga = off[anchor.m] + anchor.s, gf = off[sel.m] + sel.s;
+  return { off, g0: Math.min(ga, gf), g1: Math.max(ga, gf), r0: Math.min(anchor.r, sel.r), r1: Math.max(anchor.r, sel.r) };
+}
+function hasRange() {
+  const b = rangeBounds();
+  return !!b && (b.g0 !== b.g1 || b.r0 !== b.r1);
+}
+function setAnchorIfNone() { if (!anchor) anchor = { m: sel.m, s: sel.s, r: sel.r }; }
+function dropRange() { anchor = null; }
+function applyRangeClasses() {
+  document.querySelectorAll('.c.rg').forEach(e => e.classList.remove('rg'));
+  if (!hasRange()) return;
+  const b = rangeBounds(), p0 = posOf(b.g0, b.off), p1 = posOf(b.g1, b.off);
+  for (let m = p0.m; m <= p1.m; m++) {
+    document.querySelectorAll(`.c[data-m="${m}"]`).forEach(el => {
+      const g = b.off[m] + +el.dataset.s, r = +el.dataset.r;
+      if (g >= b.g0 && g <= b.g1 && r >= b.r0 && r <= b.r1) el.classList.add('rg');
+    });
+  }
+}
+function rangeData() {
+  const b = rangeBounds() || { off: offsets(), g0: 0, g1: 0, r0: sel.r, r1: sel.r };
+  if (!anchor) { const g = b.off[sel.m] + sel.s; b.g0 = b.g1 = g; }
+  return b;
+}
+function copyRange(silent = false) {
+  const b = rangeData(), n = nStr(), full = b.r0 === 0 && b.r1 === n - 1, steps = [];
+  for (let g = b.g0; g <= b.g1; g++) {
+    const { m, s } = posOf(g, b.off), ms = state.measures[m];
+    steps.push({
+      rows: Array.from({ length: b.r1 - b.r0 + 1 }, (_, k) => ({ v: ms.cells[b.r0 + k][s], t: ms.ties[b.r0 + k][s] })),
+      col: full ? { rest: ms.rests[s], mark: ms.marks[s], chord: ms.chords[s] } : null,
+    });
+  }
+  clip = { kind: 'range', full, steps, r0: b.r0 };
+  if (!silent) toast(`${steps.length}マス × ${b.r1 - b.r0 + 1}弦をコピーしました`);
+}
+function clearRangeContent() {
+  const b = rangeData(), n = nStr(), full = b.r0 === 0 && b.r1 === n - 1;
+  mutate(() => {
+    for (let g = b.g0; g <= b.g1; g++) {
+      const { m, s } = posOf(g, b.off), ms = state.measures[m];
+      for (let r = b.r0; r <= b.r1; r++) { ms.cells[r][s] = ''; ms.ties[r][s] = ''; }
+      if (full) { ms.rests[s] = ''; ms.marks[s] = ''; ms.chords[s] = ''; }
+    }
+  });
+}
+function cutRange() { copyRange(true); clearRangeContent(); toast('切り取りました'); }
+function pasteRange() {
+  const n = nStr(), len = clip.steps.length, rows = clip.steps[0].rows.length;
+  // 複数の弦はコピーした弦のまま（クリックした位置は時間だけ決める）。1本だけならクリックした弦へ
+  const r0 = clip.full ? 0 : rows === 1 ? sel.r : Math.min(clip.r0, Math.max(0, n - rows));
+  mutate(() => {
+    let off = offsets();
+    const start = off[sel.m] + sel.s;
+    // 足りなければ小節を足す（最後の小節と同じ拍子）
+    while (off[off.length - 1] < start + len) {
+      state.measures.push(emptyMeasure(state, tsOverride(state.measures.length - 1)));
+      off = offsets();
+    }
+    clip.steps.forEach((st, i) => {
+      const { m, s } = posOf(start + i, off), ms = state.measures[m];
+      st.rows.forEach((c, k) => {
+        const r = r0 + k;
+        if (r >= n) return;
+        ms.cells[r][s] = c.v; ms.ties[r][s] = c.t;
+        if (c.v) ms.rests[s] = '';
+      });
+      if (st.col) { ms.rests[s] = st.col.rest; ms.marks[s] = st.col.mark; ms.chords[s] = st.col.chord; }
+    });
+    // 貼り付けた範囲を選択した状態にする
+    const end = posOf(start + len - 1, off);
+    anchor = { m: sel.m, s: sel.s, r: r0 };
+    sel.m = end.m; sel.s = end.s; sel.r = Math.min(n - 1, r0 + rows - 1);
+  });
+  updateSel(false);
+  toast(`${len}マスを貼り付けました`);
+}
+/* 範囲の移動：dg マス右へ、dr 弦下へ。フレットの数字はそのまま。
+   keepPitch=true のときだけ同じ音になるようフレットを付け替える。copy=true なら元を残す */
+function moveRange(dg, dr, copy = false, keepPitch = false) {
+  const single = !hasRange();
+  const b = rangeData(), n = nStr(), full = b.r0 === 0 && b.r1 === n - 1;
+  if (dr && full) return toast('全部の弦を選んでいるときは上下に動かせません');
+  if (b.r0 + dr < 0 || b.r1 + dr > n - 1) return toast('これ以上その方向へは動かせません');
+  if (b.g0 + dg < 0) return toast('これ以上左へは動かせません');
+  // 中身を取り出す（上下の移動なら新しい弦でのフレットに直す）
+  const data = [];
+  for (let g = b.g0; g <= b.g1; g++) {
+    const { m, s } = posOf(g, b.off), ms = state.measures[m];
+    const rows = [];
+    for (let r = b.r0; r <= b.r1; r++) {
+      let v = ms.cells[r][s];
+      if (dr && keepPitch && /^\d+$/.test(v)) {
+        const f = Number(v) + state.tune[r] - state.tune[r + dr];
+        if (f < 0 || f > 24) return toast(`${noteName(state.tune[r + dr])}弦では同じ音が出せない音があります`);
+        v = String(f);
+      }
+      rows.push({ v, t: ms.ties[r][s] });
+    }
+    data.push({ rows, col: full ? { rest: ms.rests[s], mark: ms.marks[s], chord: ms.chords[s] } : null });
+  }
+  mutate(() => {
+    if (!copy) {
+      for (let g = b.g0; g <= b.g1; g++) {
+        const { m, s } = posOf(g, b.off), ms = state.measures[m];
+        for (let r = b.r0; r <= b.r1; r++) { ms.cells[r][s] = ''; ms.ties[r][s] = ''; }
+        if (full) { ms.rests[s] = ''; ms.marks[s] = ''; ms.chords[s] = ''; }
+      }
+    }
+    let off = offsets();
+    while (off[off.length - 1] <= b.g1 + dg) {
+      state.measures.push(emptyMeasure(state, tsOverride(state.measures.length - 1)));
+      off = offsets();
+    }
+    data.forEach((st, i) => {
+      const { m, s } = posOf(b.g0 + dg + i, off), ms = state.measures[m];
+      st.rows.forEach((c, k) => {
+        const r = b.r0 + dr + k;
+        ms.cells[r][s] = c.v; ms.ties[r][s] = c.t;
+        if (c.v) ms.rests[s] = '';
+      });
+      if (st.col) { ms.rests[s] = st.col.rest; ms.marks[s] = st.col.mark; ms.chords[s] = st.col.chord; }
+    });
+    // 選択も一緒に動かす
+    const shift = p => { const q = posOf(off[p.m] + p.s + dg, off); return { m: q.m, s: q.s, r: p.r + dr }; };
+    if (!single && anchor) anchor = shift(anchor);
+    Object.assign(sel, shift(sel));
+  });
+  updateSel();
+}
+function doCopy() { if (hasRange()) copyRange(); else copyMeasure(); }
+function doCut() { if (hasRange()) cutRange(); else { copyMeasure(); mutate(() => { state.measures[sel.m] = emptyMeasure(state, tsOverride(sel.m)); }); } }
+function doPaste() {
+  if (!clip) return toast('先にコピーしてください');
+  if (clip.kind === 'range') pasteRange(); else pasteMeasure();
+}
+
+function updateSel(scroll = true) {
+  applyRangeClasses();
+  document.querySelectorAll('.c.sel').forEach(e => e.classList.remove('sel'));
+  document.querySelectorAll('.measure.cur').forEach(e => e.classList.remove('cur'));
+  document.querySelector(`.measure[data-m="${sel.m}"]`)?.classList.add('cur');
+  const c = cellEl(sel.m, sel.r, sel.s);
+  if (c) { c.classList.add('sel'); if (scroll) c.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+  updateRail();
+}
+
+function clampSel() {
+  sel.m = Math.max(0, Math.min(sel.m, state.measures.length - 1));
+  sel.s = Math.max(0, Math.min(sel.s, mSteps(sel.m) - 1));
+  sel.r = Math.max(0, Math.min(sel.r, nStr() - 1));
+  if (anchor && (anchor.m >= state.measures.length || anchor.s >= mSteps(anchor.m) || anchor.r >= nStr())) dropRange();
+}
+
+function syncControls() {
+  $('#title').value = state.title;
+  $('#sub').value = state.sub;
+  $('#preset').value = state.preset;
+  $('#ts').innerHTML = Object.keys(TS).map(k => `<option value="${k}">${k}</option>`).join('');
+  $('#ts').value = state.ts;
+  $('#grid').innerHTML = gridOptions().map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  $('#grid').value = state.grid;
+  const mv = $('#move'), prev = mv.value, opts = moveOptions();
+  mv.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  mv.value = opts.some(o => o[0] === prev) ? prev : opts[Math.min(1, opts.length - 1)][0];
+  $('#perLine').value = String(state.perLine);
+  $('#rhythm').value = state.rhythm;
+  $('#capo').innerHTML = Array.from({ length: 13 }, (_, i) => `<option value="${i}">${i ? i + 'フレット' : 'なし'}</option>`).join('');
+  $('#capo').value = String(state.capo);
+  $('#chordMode').value = state.chordMode;
+  $('#hpStyle').value = state.hpStyle || 'arrow';
+  $('#tempo').value = state.tempo;
+}
+
+function refresh() { clampSel(); save(); render(); updateRail(); }
+
+function mutate(fn) {
+  undo.push(JSON.stringify(state));
+  if (undo.length > 300) undo.shift();
+  redo = [];
+  fn();
+  refresh();
+}
+function doUndo() {
+  if (!undo.length) return toast('これ以上戻せません');
+  redo.push(JSON.stringify(state)); state = JSON.parse(undo.pop()); syncControls(); refresh();
+}
+function doRedo() {
+  if (!redo.length) return toast('やり直す操作がありません');
+  undo.push(JSON.stringify(state)); state = JSON.parse(redo.pop()); syncControls(); refresh();
+}
+
+/* ---------- editing ---------- */
+const getCell = () => state.measures[sel.m].cells[sel.r][sel.s];
+const setCell = v => {
+  const ms = state.measures[sel.m];
+  if (getCell() === v && !(v && ms.rests[sel.s])) return;
+  mutate(() => {
+    ms.cells[sel.r][sel.s] = v;
+    if (!isNote(v)) ms.ties[sel.r][sel.s] = '';
+    if (v) ms.rests[sel.s] = '';  // 音を置いたらその位置の休符は外す
+  });
+};
+function toggleMark(v) {
+  const ms = state.measures[sel.m];
+  mutate(() => { ms.marks[sel.s] = ms.marks[sel.s] === v ? '' : v; });
+}
+function toggleRest() {
+  const ms = state.measures[sel.m];
+  if (!ms.rests[sel.s] && ms.cells.some(row => row[sel.s])) return toast('この位置には音があります。先に消してから休符を入れてください');
+  mutate(() => { ms.rests[sel.s] = ms.rests[sel.s] ? '' : 'r'; });
+}
+function clearHere() {
+  const ms = state.measures[sel.m];
+  if (getCell()) return setCell(''), true;
+  if (ms.rests[sel.s] || ms.marks[sel.s] || ms.chords[sel.s]) {
+    mutate(() => { ms.rests[sel.s] = ''; ms.marks[sel.s] = ''; ms.chords[sel.s] = ''; });
+    return true;
+  }
+  return false;
+}
+function toggleTie() {
+  const ms = state.measures[sel.m];
+  if (!/^\d+$/.test(getCell())) return toast('タイは数字（フレット）の入ったマスで付けてください');
+  mutate(() => { ms.ties[sel.r][sel.s] = ms.ties[sel.r][sel.s] ? '' : 't'; });
+}
+function clearColumn() {
+  const ms = state.measures[sel.m];
+  mutate(() => {
+    ms.cells.forEach(row => { row[sel.s] = ''; });
+    ms.ties.forEach(row => { row[sel.s] = ''; });
+    ms.rests[sel.s] = ''; ms.marks[sel.s] = ''; ms.chords[sel.s] = '';
+  });
+}
+
+/* コード入力：c で開く → 名前を打つ → 候補から選んで Enter */
+let lastChord = '';
+const chordUI = { cands: [], idx: 0, chord: null };
+function openChord() {
+  const bar = $('#chordbar'), inp = $('#chordIn');
+  bar.hidden = false;
+  inp.value = lastChord;
+  updateCands();
+  inp.focus(); inp.select();
+}
+function closeChord() {
+  $('#chordbar').hidden = true;
+  $('#chordIn').blur();
+}
+function updateCands() {
+  const box = $('#cands'), text = $('#chordIn').value;
+  chordUI.chord = text.trim() ? parseChord(text) : null;
+  // カポ時：「押さえ形」ならそのままの形、「実音」ならカポ分ずらした音で探す（フレットはカポからの数え）
+  const tune = state.chordMode === 'sound' ? state.tune.map(t => t + state.capo) : state.tune;
+  chordUI.cands = chordUI.chord ? voicings(chordUI.chord, tune) : [];
+  chordUI.idx = 0;
+  if (!text.trim()) { box.innerHTML = '<span class="msg">コード名を入力（例：C、Am7、F#m、Bm7b5、G/B）</span>'; return; }
+  if (!chordUI.chord) { box.innerHTML = '<span class="msg">読めないコード名です</span>'; return; }
+  if (!chordUI.cands.length) { box.innerHTML = '<span class="msg">このチューニングで押さえられる形が見つかりません</span>'; return; }
+  drawCands();
+}
+function drawCands() {
+  $('#cands').innerHTML = chordUI.cands.map((c, i) =>
+    `<button type="button" class="cand${i === chordUI.idx ? ' on' : ''}" data-i="${i}">${shapeText(c.frets)}<small>${c.pos ? c.pos + 'f' : '開放'}</small></button>`).join('');
+}
+function applyChord(i = chordUI.idx) {
+  const c = chordUI.cands[i];
+  if (!c) return toast('入れられる押さえ方がありません');
+  const ms = state.measures[sel.m], name = chordUI.chord.name;
+  mutate(() => {
+    c.frets.forEach((f, r) => { ms.cells[r][sel.s] = f === null ? '' : String(f); });
+    ms.rests[sel.s] = '';
+    ms.chords[sel.s] = name;
+  });
+  lastChord = $('#chordIn').value.trim();
+  closeChord();
+  move(Number($('#move').value) || 1, true);
+}
+$('#chordIn').addEventListener('input', updateCands);
+$('#cands').addEventListener('click', e => { const b = e.target.closest('.cand'); if (b) applyChord(+b.dataset.i); });
+function chordKey(e) {
+  if (e.isComposing) return;
+  if (e.key === 'Enter') { e.preventDefault(); applyChord(); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeChord(); }
+  else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && chordUI.cands.length) {
+    e.preventDefault();
+    const n = chordUI.cands.length;
+    chordUI.idx = (chordUI.idx + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
+    drawCands();
+  }
+}
+
+function typeDigit(d) {
+  const k = `${sel.m}:${sel.r}:${sel.s}`, now = performance.now(), cur = getCell();
+  if (last.k === k && now - last.t < 1000 && /^[12]$/.test(cur) && Number(cur + d) <= 24) setCell(cur + d);
+  else setCell(d);
+  last = { k, t: now };
+}
+
+function move(k, extend = false) {
+  let m = sel.m, s = sel.s + k;
+  while (s >= mSteps(m)) {
+    if (m === state.measures.length - 1) {
+      if (!extend) { s = mSteps(m) - 1; break; }
+      mutate(() => state.measures.push(emptyMeasure(state, tsOverride(m))));
+    }
+    s -= mSteps(m); m++;
+  }
+  while (s < 0) {
+    if (m === 0) { s = 0; break; }
+    m--; s += mSteps(m);
+  }
+  sel.m = m; sel.s = s;
+  updateSel();
+}
+function jumpMeasure(d) {
+  let m = sel.m + d;
+  if (m >= state.measures.length) mutate(() => state.measures.push(emptyMeasure(state, tsOverride(state.measures.length - 1))));
+  sel.m = Math.max(0, Math.min(m, state.measures.length - 1)); sel.s = 0;
+  updateSel();
+}
+
+function act(k, shift = false) {
+  last = /^[0-9]$/.test(k) ? last : { k: '', t: 0 };
+  // 範囲まわり
+  if (k === 'Copy') { doCopy(); return true; }
+  if (k === 'Cut') { doCut(); return true; }
+  if (k === 'Paste') { doPaste(); return true; }
+  if (k === 'MoveL') { moveRange(-1, 0); return true; }
+  if (k === 'MoveR') { moveRange(1, 0); return true; }
+  if (k === 'MoveU') { moveRange(0, -1); return true; }
+  if (k === 'MoveD') { moveRange(0, 1); return true; }
+  if (k === 'RangeMode') {
+    rangeMode = !rangeMode;
+    $('#padRange').classList.toggle('on', rangeMode);
+    if (rangeMode) { setAnchorIfNone(); toast('範囲モード：タップで範囲を広げます'); } else { dropRange(); updateSel(false); }
+    return true;
+  }
+  if (k === 'Escape') { if (anchor) { dropRange(); rangeMode = false; $('#padRange').classList.remove('on'); updateSel(false); } return true; }
+  if (hasRange() && (k === 'Delete' || k === 'Backspace')) { clearRangeContent(); return true; }
+  const extending = (shift || rangeMode) && /^Arrow/.test(k);
+  if (extending) setAnchorIfNone();
+  else if (anchor && !rangeMode && k !== 'Enter') { dropRange(); applyRangeClasses(); }
+  if (/^[0-9]$/.test(k)) { typeDigit(k); return true; }
+  if (k === '¥') k = '\\';
+  if (k === 'h' || k === 'H' || k === 'p' || k === 'P') { toggleMark(k.toLowerCase()); return true; }
+  if (k === 'r' || k === 'R') { toggleRest(); return true; }
+  if (k === 'c' || k === 'C') { openChord(); return true; }
+  if (k === 't' || k === 'T') { toggleTie(); return true; }
+  if (shift && (k === 'Delete' || k === 'Backspace')) { clearColumn(); return true; }
+  if (k.length === 1 && SYMS.includes(k.toLowerCase())) { setCell(k.toLowerCase()); return true; }
+  switch (k) {
+    case 'ArrowLeft': move(-1); return true;
+    case 'ArrowRight': move(1); return true;
+    case 'ArrowUp': sel.r = Math.max(0, sel.r - 1); updateSel(); return true;
+    case 'ArrowDown': sel.r = Math.min(nStr() - 1, sel.r + 1); updateSel(); return true;
+    case ' ': { const st = Number($('#move').value) || 1; move(shift ? -st : st, !shift); return true; }
+    case 'Tab': jumpMeasure(shift ? -1 : 1); return true;
+    case 'Home': sel.s = 0; updateSel(); return true;
+    case 'End': sel.s = mSteps(sel.m) - 1; updateSel(); return true;
+    case 'Backspace': if (!clearHere()) { move(-1); clearHere(); } return true;
+    case 'Delete': clearHere(); return true;
+    case 'Enter': togglePlay(); return true;
+  }
+  return false;
+}
+
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t.id === 'chordIn') return chordKey(e);
+  if (t.closest && t.closest('input, select, textarea, button')) {
+    if (t.matches('input, select') && (e.key === 'Escape' || (e.key === 'Enter' && !e.isComposing && t.type !== 'checkbox'))) { e.preventDefault(); t.blur(); }
+    return;
+  }
+  if (e.isComposing) return;
+  if (e.metaKey || e.ctrlKey) {
+    const k = e.key.toLowerCase();
+    if (k === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); }
+    else if (k === 'y') { e.preventDefault(); doRedo(); }
+    else if (k === 'c' && !String(window.getSelection())) { e.preventDefault(); doCopy(); }
+    else if (k === 'x') { e.preventDefault(); doCut(); }
+    else if (k === 'v') { e.preventDefault(); doPaste(); }
+    else if (k === 'a') { e.preventDefault(); anchor = { m: 0, s: 0, r: 0 }; const L = state.measures.length - 1; sel.m = L; sel.s = mSteps(L) - 1; sel.r = nStr() - 1; updateSel(false); }
+    else if (k === 'd') { e.preventDefault(); dupMeasure(); }
+    return;
+  }
+  if (e.altKey) {
+    const step = e.shiftKey ? Number($('#move').value) || 1 : 1;
+    const mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    // ⌥↑↓ はフレットそのまま、⌥⇧↑↓ は同じ音のまま
+    if (mv) { e.preventDefault(); moveRange(mv[0], mv[1], false, e.shiftKey && mv[1] !== 0); }
+    return;
+  }
+  if (act(e.key, e.shiftKey)) e.preventDefault();
+});
+
+// クリックで選択、⇧+クリック（または範囲モード）で範囲、マウスのドラッグでも範囲
+let dragging = false;
+let moving = null;  // 選んだ範囲をつかんで動かしている間 { g, r, dg, dr, copy }
+const cellPos = el => ({ m: +el.dataset.m, r: +el.dataset.r, s: +el.dataset.s });
+function previewDrop() {
+  document.querySelectorAll('.c.drop').forEach(e => e.classList.remove('drop'));
+  if (!moving || (!moving.dg && !moving.dr)) return;
+  const b = rangeBounds();
+  document.querySelectorAll('.c').forEach(el => {
+    const m = +el.dataset.m, g = b.off[m] + +el.dataset.s - moving.dg, r = +el.dataset.r - moving.dr;
+    if (g >= b.g0 && g <= b.g1 && r >= b.r0 && r <= b.r1) el.classList.add('drop');
+  });
+}
+$('#systems').addEventListener('pointerdown', e => {
+  const c = e.target.closest('.c');
+  if (!c || e.button !== 0) return;
+  const p = cellPos(c);
+  // 範囲の中をつかんだら移動（⌥で複製）
+  if (!e.shiftKey && !rangeMode && c.classList.contains('rg') && e.pointerType === 'mouse') {
+    const off = offsets();
+    moving = { g: off[p.m] + p.s, r: p.r, dg: 0, dr: 0, copy: e.altKey, cell: p };
+    document.body.classList.add('moving');
+    return;
+  }
+  if (e.shiftKey || rangeMode) setAnchorIfNone();
+  else { anchor = { ...p }; dragging = e.pointerType === 'mouse'; }
+  sel.m = p.m; sel.r = p.r; sel.s = p.s;
+  last = { k: '', t: 0 };
+  updateSel(false);
+});
+$('#systems').addEventListener('pointerover', e => {
+  const c = e.target.closest('.c');
+  if (!c) return;
+  const p = cellPos(c);
+  if (moving) {
+    const off = offsets();
+    moving.dg = off[p.m] + p.s - moving.g;
+    moving.dr = p.r - moving.r;
+    moving.copy = e.altKey;
+    previewDrop();
+    return;
+  }
+  if (!dragging) return;
+  if (p.m === sel.m && p.r === sel.r && p.s === sel.s) return;
+  sel.m = p.m; sel.r = p.r; sel.s = p.s;
+  updateSel(false);
+});
+window.addEventListener('pointerup', e => {
+  if (moving) {
+    const mv = moving;
+    moving = null;
+    document.body.classList.remove('moving');
+    document.querySelectorAll('.c.drop').forEach(el => el.classList.remove('drop'));
+    if (mv.dg || mv.dr) {
+      moveRange(mv.dg, mv.dr, mv.copy || e.altKey);
+      if (mv.copy || e.altKey) toast('複製しました');
+    } else {
+      // 動かさずに離した＝ただのクリック：範囲を解除してそのマスを選ぶ
+      anchor = { ...mv.cell };
+      Object.assign(sel, mv.cell);
+      updateSel(false);
+    }
+    return;
+  }
+  if (!dragging) return;
+  dragging = false;
+  if (!hasRange()) { dropRange(); updateRail(); }
+});
+
+$('#pad').addEventListener('mousedown', e => { if (!e.target.closest('input')) e.preventDefault(); });
+$('#pad').addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (b) act(b.dataset.k); });
+document.addEventListener('click', e => { const b = e.target.closest('button'); if (b) b.blur(); });
+
+/* ---------- measure operations ---------- */
+function copyMeasure() {
+  const ms = state.measures[sel.m];
+  clip = { kind: 'measure', cells: clone(ms.cells), ties: clone(ms.ties), marks: ms.marks.slice(), rests: ms.rests.slice(), chords: ms.chords.slice(), ts: mTs(sel.m), st: { grid: state.grid, ts: state.ts } };
+  toast(`${sel.m + 1}小節目をコピーしました`);
+}
+function pasteMeasure() {
+  if (!clip) return toast('先に小節をコピーしてください');
+  if (clip.kind === 'range') return pasteRange();
+  mutate(() => {
+    const n = nStr(), ts = mTs(sel.m), ms = state.measures[sel.m];
+    ms.cells = Array.from({ length: n }, (_, r) =>
+      clip.cells[r] ? remapRow(clip.cells[r], clip.ts, ts, clip.st) : Array(mSteps(sel.m)).fill(''));
+    ms.marks = remapRow(clip.marks, clip.ts, ts, clip.st);
+    ms.rests = remapRow(clip.rests, clip.ts, ts, clip.st);
+    ms.chords = remapRow(clip.chords, clip.ts, ts, clip.st);
+    ms.ties = Array.from({ length: n }, (_, r) =>
+      clip.ties[r] ? remapRow(clip.ties[r], clip.ts, ts, clip.st) : Array(mSteps(sel.m)).fill(''));
+  });
+  toast(`${sel.m + 1}小節目に貼り付けました`);
+}
+function setMeasureTs(ts, andAfter) {
+  const end = andAfter ? state.measures.length : sel.m + 1;
+  mutate(() => {
+    for (let m = sel.m; m < end; m++) {
+      const ms = state.measures[m], from = mTs(m);
+      ms.ts = ts || null;
+      const to = mTs(m);
+      if (from !== to) remapMeasure(ms, from, to);
+    }
+  });
+  toast(`${sel.m + 1}小節目${andAfter ? '以降' : ''}を ${mTs(sel.m)} にしました`);
+}
+$('#mts').onchange = e => setMeasureTs(e.target.value, $('#mtsAfter').checked);
+function dupMeasure() {
+  mutate(() => { const c = clone(state.measures[sel.m]); c.label = ''; state.measures.splice(sel.m + 1, 0, c); sel.m++; });
+  updateSel(); toast('小節を複製しました');
+}
+$('#mCopy').onclick = copyMeasure;
+$('#mPaste').onclick = pasteMeasure;
+$('#mDup').onclick = dupMeasure;
+$('#mIns').onclick = () => { mutate(() => { state.measures.splice(sel.m + 1, 0, emptyMeasure(state, tsOverride(sel.m))); sel.m++; sel.s = 0; }); updateSel(); };
+$('#mClear').onclick = () => mutate(() => { state.measures[sel.m] = emptyMeasure(state, tsOverride(sel.m)); });
+$('#mDel').onclick = () => {
+  mutate(() => {
+    if (state.measures.length === 1) state.measures[0] = emptyMeasure(state, tsOverride(0));
+    else state.measures.splice(sel.m, 1);
+  });
+  updateSel(false); toast('小節を削除しました（⌘Zで戻せます）');
+};
+document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+  const k = +b.dataset.add;
+  mutate(() => {
+    const ts = tsOverride(state.measures.length - 1);
+    for (let i = 0; i < k; i++) state.measures.push(emptyMeasure(state, ts));
+  });
+});
+
+/* ---------- settings ---------- */
+$('#preset').innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.name}（${p.tune.slice().reverse().map(noteName).join(' ')}）</option>`).join('');
+
+$('#preset').onchange = e => {
+  const v = e.target.value, tune = PRESETS[v].tune.slice(), n = tune.length;
+  mutate(() => {
+    state.preset = v; state.tune = tune;
+    state.measures.forEach((ms, m) => {
+      ms.cells = ms.cells.slice(0, n);
+      ms.ties = ms.ties.slice(0, n);
+      while (ms.ties.length < n) ms.ties.push(Array(mSteps(m)).fill(''));
+      while (ms.cells.length < n) ms.cells.push(Array(mSteps(m)).fill(''));
+    });
+  });
+};
+function changeTiming(fn) {
+  const before = { grid: state.grid, ts: state.ts };
+  mutate(() => {
+    fn();
+    if (!gridOptions().some(o => o[0] === state.grid)) state.grid = '16';
+    state.measures.forEach(ms => {
+      const from = tsOf(ms, before), to = tsOf(ms);
+      remapMeasure(ms, from, to, before, state);
+    });
+  });
+  syncControls();
+  render();
+}
+$('#ts').onchange = e => changeTiming(() => { state.ts = e.target.value; });
+$('#grid').onchange = e => changeTiming(() => { state.grid = e.target.value; });
+$('#perLine').onchange = e => mutate(() => { state.perLine = +e.target.value; });
+$('#rhythm').onchange = e => { state.rhythm = e.target.value; refresh(); };
+$('#capo').onchange = e => { state.capo = +e.target.value; refresh(); };
+$('#chordMode').onchange = e => { state.chordMode = e.target.value; save(); };
+$('#hpStyle').onchange = e => { state.hpStyle = e.target.value; refresh(); };
+$('#tempo').onchange = e => {
+  state.tempo = Math.min(300, Math.max(30, Math.round(+e.target.value || 120)));
+  e.target.value = state.tempo; refresh();
+};
+$('#title').oninput = e => { state.title = e.target.value; save(); };
+$('#sub').oninput = e => { state.sub = e.target.value; save(); };
+$('#mlabel').oninput = e => { state.measures[sel.m].label = e.target.value.slice(0, 20); save(); render(); };
+
+/* ---------- files ---------- */
+// 確認はページの中で：1回目で「もう一度押すと消えます」に変わり、3秒以内の2回目で実行
+let newArmed = null;
+$('#bNew').onclick = () => {
+  const b = $('#bNew');
+  if (!newArmed) {
+    b.textContent = 'もう一度押すと白紙に';
+    b.classList.add('danger');
+    newArmed = setTimeout(() => { newArmed = null; b.textContent = '新規'; b.classList.remove('danger'); }, 3000);
+    return;
+  }
+  clearTimeout(newArmed); newArmed = null; b.textContent = '新規'; b.classList.remove('danger');
+  mutate(() => {
+    const keep = { preset: state.preset, tune: state.tune, tempo: state.tempo, ts: state.ts, grid: state.grid, perLine: state.perLine,
+      rhythm: state.rhythm, capo: state.capo, chordMode: state.chordMode, hpStyle: state.hpStyle };
+    state = Object.assign({ title: '', sub: '', measures: [] }, keep);
+    for (let i = 0; i < 8; i++) state.measures.push(emptyMeasure());
+  });
+  sel.m = sel.s = sel.r = 0; syncControls(); updateSel(false);
+  toast('白紙にしました（⌘Zで戻せます）');
+};
+
+/* ファイルの保存：claude.ai の共有ページでは downloads 機能、手元のHTMLでは普通のダウンロード */
+const inViewer = !!(window.claude && typeof window.claude.use === 'function');
+let downloads = null;
+const safeName = ext => (state.title || 'tab').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) + ext;
+async function saveFile(filename, data) {
+  if (inViewer) {
+    if (!downloads) { toast('このページではファイルを保存できません'); return false; }
+    try { await downloads.save({ filename, data }); return true; }
+    catch (err) {
+      if (err && err.code === 'declined') toast('保存をキャンセルしました');
+      else if (err && err.code === 'rate_limited') toast('保存の確認画面がすでに開いています');
+      else toast('保存できませんでした');
+      return false;
+    }
+  }
+  const blob = data instanceof Blob ? data : new Blob([data]);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  return true;
+}
+$('#bExport').onclick = async () => {
+  if (await saveFile(safeName('.tab.json'), JSON.stringify(state, null, 1))) toast('ファイルに書き出しました');
+};
+$('#bOpen').onclick = () => $('#file').click();
+$('#file').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const st = normalize(JSON.parse(rd.result));
+      mutate(() => { state = st; });
+      sel.m = sel.s = sel.r = 0; syncControls(); updateSel(false);
+      toast(`「${f.name}」を開きました`);
+    } catch (err) { toast('開けませんでした：TABメーカーで書き出した .json を選んでください'); }
+    e.target.value = '';
+  };
+  rd.readAsText(f);
+};
+
+function toAscii() {
+  const names = state.tune.map(noteName), w0 = Math.max(...names.map(s => s.length)), M = state.measures, vis = visibleChords();
+  const out = [state.title, state.sub, `Tuning: ${names.slice().reverse().join(' ')}   ♩=${state.tempo}   ${state.ts}`, ''];
+  for (let i = 0; i < M.length; i += state.perLine) {
+    const rows = names.map(nm => nm.padEnd(w0) + '|');
+    let head = ' '.repeat(w0 + 1), top = ' '.repeat(w0 + 1), anyTop = false;
+    let chordLine = '', offset = w0 + 1;
+    const putChord = (name, at) => {
+      if (chordLine.length < at) chordLine = chordLine.padEnd(at);
+      else if (chordLine.length) chordLine += ' ';
+      chordLine += name;
+    };
+    M.slice(i, i + state.perLine).forEach((ms, j) => {
+      const m = i + j, steps = mSteps(m), ts = mTs(m);
+      const tsMark = (m === 0 || ts !== mTs(m - 1)) ? ` [${ts}]` : '';
+      // 上の行：H/P（または < >）と休符（R）
+      const topOf = s => (ms.marks[s] ? markText(ms.marks[s]) : ms.rests[s] ? 'R' : '');
+      const cols = [];
+      for (let s = 0; s < steps; s++) cols.push(Math.max(1, topOf(s).length, ...ms.cells.map(row => row[s].length)));
+      rows.forEach((_, r) => {
+        let line = '-';
+        for (let s = 0; s < steps; s++) line += (ms.cells[r][s] || '').padEnd(cols[s], '-') + '-';
+        rows[r] += line + '|';
+      });
+      let tl = ' ', at = offset + 1;
+      for (let s = 0; s < steps; s++) {
+        const t = topOf(s); if (t) anyTop = true; tl += t.padEnd(cols[s], ' ') + ' ';
+        if (vis[m][s]) putChord(vis[m][s], at);
+        at += cols[s] + 1;
+      }
+      top += tl + ' ';
+      offset = at + 1;
+      const width = cols.reduce((a, b) => a + b + 1, 1) + 1;
+      head += (`${m + 1}${tsMark}${ms.label ? ' ' + ms.label : ''}`).padEnd(width);
+    });
+    out.push(head.trimEnd(), ...(chordLine ? [chordLine] : []), ...(anyTop ? [top.trimEnd()] : []), ...rows, '');
+  }
+  return out.filter((l, k) => k > 2 || l !== '').join('\n');
+}
+$('#bText').onclick = () => {
+  const text = toAscii();
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('テキスト形式でコピーしました'); } catch { toast('コピーできませんでした'); }
+    ta.remove();
+  };
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('テキスト形式でコピーしました'), fallback);
+  else fallback();
+};
+
+/* PDF：手元のHTMLでは印刷画面（文字がくっきりしたPDF）、共有ページではページ内でA4画像PDFを組み立てる */
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) return res();
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('load'));
+    document.head.appendChild(s);
+  });
+}
+async function buildPdf() {
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  const src = $('#page'), stage = document.createElement('div');
+  stage.className = 'pdf-stage';
+  document.body.appendChild(stage);
+  const mm = 96 / 25.4, bottom = (297 - 13) * mm;
+  const newPage = () => {
+    const p = document.createElement('div');
+    p.className = src.className + ' pdf-page';
+    p.style.cssText = src.style.cssText;
+    stage.appendChild(p);
+    return p;
+  };
+  try {
+    const head = document.createElement('header');
+    head.className = 'sheet-head';
+    head.innerHTML = `<div class="t-title">${esc(state.title) || '&nbsp;'}</div><div class="head-row"><div class="meta">${esc($('#meta').textContent)}</div><div class="t-sub">${esc(state.sub)}</div></div>`;
+    let page = newPage();
+    page.appendChild(head);
+    const pages = [page];
+    for (const sys of $('#systems').children) {
+      const c = sys.cloneNode(true);
+      c.querySelectorAll('.sel,.cur,.play,.bt').forEach(e => e.classList.remove('sel', 'cur', 'play', 'bt'));
+      page.appendChild(c);
+      if (c.offsetTop + c.offsetHeight > bottom && page.children.length > 1) {
+        c.remove();
+        page = newPage(); pages.push(page);
+        page.appendChild(c);
+      }
+    }
+    const pdf = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const y0 = window.scrollY;
+    window.scrollTo(0, 0);
+    for (let i = 0; i < pages.length; i++) {
+      pages.forEach((p, k) => { p.style.display = k === i ? '' : 'none'; });
+      const canvas = await window.html2canvas(pages[i], { scale: 2.5, backgroundColor: '#ffffff', logging: false });
+      if (i) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+    }
+    window.scrollTo(0, y0);
+    return pdf.output('blob');
+  } finally {
+    stage.remove();
+  }
+}
+$('#bPrint').onclick = async () => {
+  stopPlay();
+  if (!inViewer) { window.print(); return; }
+  const busy = $('#busy');
+  busy.hidden = false;
+  let blob = null;
+  try { blob = await buildPdf(); }
+  catch { toast('PDFを作れませんでした。通信状態を確かめてもう一度お試しください'); }
+  finally { busy.hidden = true; }
+  if (blob && await saveFile(safeName('.pdf'), blob)) toast('PDFを保存しました');
+};
+window.addEventListener('beforeprint', () => { document.title = state.title || 'TAB譜'; });
+window.addEventListener('afterprint', () => { document.title = 'TABメーカー'; });
+
+/* ---------- playback ---------- */
+let ac = null, master = null, player = null;
+function ensureAudio() {
+  if (!ac) {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = ac.createDynamicsCompressor();
+    master = ac.createGain(); master.gain.value = 0.6;
+    master.connect(comp); comp.connect(ac.destination);
+  }
+  if (ac.state === 'suspended') ac.resume();
+}
+function voice(midi, t) {
+  const f = 440 * Math.pow(2, (midi - 69) / 12), guitar = state.tune[0] > 50;
+  const o1 = ac.createOscillator(), o2 = ac.createOscillator(), mix = ac.createGain();
+  o1.type = 'sawtooth'; o1.frequency.value = f;
+  o2.type = 'sine'; o2.frequency.value = f; mix.gain.value = 0.6;
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 1.5;
+  lp.frequency.setValueAtTime(guitar ? 4200 : 1800, t);
+  lp.frequency.setTargetAtTime(guitar ? 900 : 320, t, 0.08);
+  const env = ac.createGain();
+  env.gain.setValueAtTime(0, t);
+  env.gain.linearRampToValueAtTime(0.32, t + 0.005);
+  env.gain.setTargetAtTime(0, t + 0.005, guitar ? 0.45 : 0.7);
+  const stopper = ac.createGain();
+  o1.connect(lp); o2.connect(mix); mix.connect(lp); lp.connect(env); env.connect(stopper); stopper.connect(master);
+  o1.start(t); o2.start(t); o1.stop(t + 4); o2.stop(t + 4);
+  return {
+    stop(t2) {
+      stopper.gain.setValueAtTime(1, t2);
+      stopper.gain.setTargetAtTime(0, t2, 0.012);
+      try { o1.stop(t2 + 0.12); o2.stop(t2 + 0.12); } catch {}
+    },
+  };
+}
+function setPlayLabel(on) {
+  $('#bPlay').textContent = on ? '■ 停止' : '▶ 再生';
+  $('#padPlay').textContent = on ? '■ 停止' : '▶ 再生';
+}
+function togglePlay() { player ? stopPlay() : startPlay(); }
+function startPlay() {
+  try { ensureAudio(); } catch { return toast('このブラウザでは再生できません'); }
+  player = { m: sel.m, s: 0, loop: $('#range').value === 'loop', next: ac.currentTime + 0.1, voices: [], queue: [], end: null, lastM: -1 };
+  player.timer = setInterval(tick, 25);
+  tick();
+  player.raf = requestAnimationFrame(draw);
+  setPlayLabel(true);
+}
+function stopPlay() {
+  if (!player) return;
+  clearInterval(player.timer); cancelAnimationFrame(player.raf);
+  player.voices.forEach(v => v && v.stop(ac.currentTime));
+  player = null;
+  document.querySelectorAll('.c.play').forEach(e => e.classList.remove('play'));
+  setPlayLabel(false);
+}
+function tick() {
+  const p = player; if (!p) return;
+  while (p.end === null && p.next < ac.currentTime + 0.15) {
+    const ms = state.measures[p.m];
+    if (!ms) { p.end = p.next; break; }
+    const sd = stepDur(p.m), steps = mSteps(p.m);
+    // 3音以上の和音は低い弦から少しずつずらして鳴らす（ストローク風）
+    const chordNotes = ms.cells.filter(row => /^\d+$/.test(row[p.s])).length;
+    let strum = 0;
+    ms.cells.map((row, r) => [row, r]).reverse().forEach(([row, r]) => {
+      const v = row[p.s];
+      if (/^\d+$/.test(v)) {
+        if (tiedInto(p.m, r, p.s)) return;  // タイの先は弾き直さず鳴らしたまま
+        const t = p.next + (chordNotes >= 3 ? 0.014 * strum++ : 0);
+        p.voices[r]?.stop(t); p.voices[r] = voice(state.tune[r] + state.capo + Number(v), t);
+      }
+      else if (v === 'x') { p.voices[r]?.stop(p.next); p.voices[r] = null; }
+    });
+    if (ms.rests[p.s]) p.voices.forEach((v, r) => { v?.stop(p.next); p.voices[r] = null; });
+    p.queue.push({ t: p.next, m: p.m, s: p.s });
+    p.next += sd; p.s++;
+    if (p.s >= steps) {
+      p.s = 0;
+      if (!p.loop) { p.m++; if (p.m >= state.measures.length) p.end = p.next; }
+    }
+  }
+  if (p.end !== null && ac.currentTime > p.end + 0.4) stopPlay();
+}
+function draw() {
+  const p = player; if (!p) return;
+  let cur = null;
+  while (p.queue.length && p.queue[0].t <= ac.currentTime) cur = p.queue.shift();
+  if (cur) {
+    document.querySelectorAll('.c.play').forEach(e => e.classList.remove('play'));
+    document.querySelectorAll(`.c[data-m="${cur.m}"][data-s="${cur.s}"]`).forEach(e => e.classList.add('play'));
+    if (cur.m !== p.lastM) { p.lastM = cur.m; document.querySelector(`.measure[data-m="${cur.m}"]`)?.scrollIntoView({ block: 'nearest' }); }
+  }
+  p.raf = requestAnimationFrame(draw);
+}
+$('#bPlay').onclick = togglePlay;
+
+/* ---------- toast ---------- */
+let toastTimer = null;
+function toast(msg) {
+  const el = $('#toast'); el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+/* ---------- boot ---------- */
+if (inViewer) {
+  $('#hint').textContent = '「PDFで保存」を押すとA4のPDFを作ってダウンロードします（保存の確認が出ます）。譜面はこのブラウザに自動保存されます。別の端末へ持っていくときは「ファイルに書き出し」を使ってください。';
+  window.claude.use('downloads').then(ns => {
+    downloads = ns;
+    if (!ns) {
+      ['#bPrint', '#bExport'].forEach(id => { $(id).hidden = true; });
+      $('#hint').textContent = 'この表示ではファイルの保存ができません。編集と再生はそのまま使えます。';
+    }
+  }, () => {});
+}
+state = load() || sample();
+syncControls();
+render();
+updateSel(false);
+})();
+</script>
+</body>
+</html>
